@@ -2,7 +2,10 @@ services:
   - type: web
     name: docecho
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install -r requirements.txt
+      mkdir -p /opt/data/static
+      cp -r app/static/* /opt/data/static/
     startCommand: |
       python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all()" && \
       gunicorn wsgi:app --timeout 120 --workers 2 --threads 2
