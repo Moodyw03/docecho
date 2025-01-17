@@ -2,7 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
-from config import Config
+from app.config import Config
 
 db = SQLAlchemy()
 login_manager = LoginManager()
