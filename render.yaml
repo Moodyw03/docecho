@@ -4,8 +4,9 @@ services:
     env: python
     buildCommand: |
       pip install -r requirements.txt
-      mkdir -p /opt/data/static
+      mkdir -p /opt/data/static /opt/data/uploads /opt/data/output /opt/data/temp
       cp -r app/static/* /opt/data/static/
+      chmod -R 755 /opt/data
     startCommand: |
       python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all()" && \
       gunicorn wsgi:app --timeout 120 --workers 2 --threads 2
