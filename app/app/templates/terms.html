@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block meta_tags %}
+<title>DocEcho Terms & Conditions | PDF Translation Service Terms</title>
+<meta name="description" content="Read our terms and conditions for using DocEcho's PDF translation and audio conversion services. Clear guidelines for document processing.">
+<meta name="keywords" content="DocEcho terms, PDF translation terms, document conversion terms, service agreement">
+
+<!-- Open Graph Meta Tags -->
+<meta property="og:title" content="DocEcho Terms & Conditions">
+<meta property="og:description" content="Terms and conditions for using DocEcho's PDF translation and audio conversion services.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ request.url }}">
+
+<!-- Twitter Card Meta Tags -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DocEcho Terms & Conditions">
+<meta name="twitter:description" content="Service terms for PDF translation and audio conversion.">
+{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    body {
+        font-family: 'Poppins', sans-serif;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        background-color: var(--bg-secondary);
+        color: var(--text-color);
+        line-height: 1.6;
+    }
+
+    .terms-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+        margin-bottom: 80px;
+    }
+
+    .terms-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .terms-title {
+        font-size: 2rem;
+        color: var(--primary-color);
+        margin-bottom: 0.5rem;
+    }
+
+    .last-updated {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+
+    .terms-content {
+        background: var(--bg-primary);
+        backdrop-filter: none;
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .terms-content h2 {
+        color: var(--primary-color);
+        margin-top: 1.5rem;
+        margin-bottom: 0.8rem;
+        font-size: 1.2rem;
+    }
+
+    .terms-content p {
+        margin-bottom: 0.8rem;
+        font-size: 0.9rem;
+        color: var(--text-color);
+        line-height: 1.5;
+    }
+
+    .contact-info {
+        background: var(--bg-secondary);
+        border-radius: 12px;
+        padding: 1.2rem;
+        margin-top: 1.5rem;
+        border: 1px solid var(--border-color);
+    }
+
+    .contact-info a {
+        color: var(--primary-color);
+        text-decoration: none;
+    }
+
+    .contact-info a:hover {
+        color: var(--primary-hover);
+    }
+
+    @keyframes gradient {
+        0%, 100% {
+            background-position: 0% 50%;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .terms-container {
+            padding: 1rem;
+        }
+
+        .terms-content {
+            padding: 1.2rem;
+        }
+
+        .terms-title {
+            font-size: 1.8rem;
+        }
+
+        .terms-content h2 {
+            font-size: 1.1rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="terms-container">
+    <div class="terms-header">
+        <h1 class="terms-title">Terms and Conditions</h1>
+        <div class="last-updated">Last Updated: 26/11/2024</div>
+    </div>
+
+    <div class="terms-content">
+        <section>
+            <h2>1. Introduction</h2>
+            <p>Welcome to Docecho ("the App"), developed by Gabriel Pereira ("we," "us," or "our"). These Terms and Conditions ("Terms") govern your use of the App. By accessing or using Docecho, you agree to comply with and be bound by these Terms. If you do not agree with any part of these Terms, please do not use the App.</p>
+        </section>
+
+        <section>
+            <h2>2. Acceptance of Terms</h2>
+            <p>Your use of the App constitutes your acceptance of these Terms. You acknowledge that you have read, understood, and agree to be bound by these Terms, as well as any applicable laws and regulations.</p>
+        </section>
+
+        <section>
+            <h2>3. Eligibility</h2>
+            <p>By using the App, you represent that you are at least 13 years of age. If you are under 18, you may use the App only with the involvement and consent of a parent or legal guardian.</p>
+        </section>
+
+        <section>
+            <h2>4. User Accounts</h2>
+            <p>Registration: To access certain features, you may need to create an account by providing accurate and complete information.<br>
+            Account Security: You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.<br>
+            Account Termination: We reserve the right to suspend or terminate your account at our discretion, without notice, if we suspect any violation of these Terms.</p>
+        </section>
+
+        <section>
+            <h2>5. Use of the App</h2>
+            <p>License Grant: We grant you a non-exclusive, non-transferable, revocable license to use the App for personal, non-commercial purposes.<br>
+            Prohibited Actions: You agree not to misuse the App, including but not limited to reverse engineering, decompiling, or disassembling the App, or using it for any unlawful purpose.</p>
+        </section>
+
+        <section>
+            <h2>6. Payments and Credits</h2>
+            <p>In-App Purchases: The App may offer virtual credits or other items for purchase. All purchases are final and non-refundable.<br>
+            Payment Processing: Payments are processed through third-party payment providers. We are not responsible for errors or issues arising from these services.<br>
+            Pricing Changes: We reserve the right to adjust pricing for any features or services offered within the App.</p>
+        </section>
+
+        <section>
+            <h2>7. Intellectual Property Rights</h2>
+            <p>Ownership: All content, trademarks, and data within the App are the property of Gabriel Pereira or our licensors and are protected by applicable intellectual property laws.<br>
+            Restrictions: You may not copy, modify, distribute, or create derivative works based on the App or its content without our prior written consent.</p>
+        </section>
+
+        <section>
+            <h2>8. Privacy Policy</h2>
+            <p>Your privacy is important to us. Please review our Privacy Policy, which explains how we collect, use, and disclose information from users.</p>
+        </section>
+
+        <section>
+            <h2>9. Third-Party Services</h2>
+            <p>The App may contain links to third-party websites or services that are not owned or controlled by us. We have no control over and assume no responsibility for the content or practices of any third-party sites or services.</p>
+        </section>
+
+        <section>
+            <h2>10. Limitation of Liability</h2>
+            <p>To the maximum extent permitted by law, Gabriel Pereira shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or relating to your use of the App.</p>
+        </section>
+
+        <section>
+            <h2>11. Disclaimer of Warranties</h2>
+            <p>The App is provided on an "AS IS" and "AS AVAILABLE" basis without warranties of any kind, either express or implied. We do not warrant that the App will be uninterrupted, error-free, or free of viruses or other harmful components.</p>
+        </section>
+
+        <section>
+            <h2>12. Indemnification</h2>
+            <p>You agree to indemnify and hold harmless Gabriel Pereira from and against any and all claims, liabilities, damages, losses, or expenses arising out of your use of the App or violation of these Terms.</p>
+        </section>
+
+        <section>
+            <h2>13. Changes to Terms</h2>
+            <p>We reserve the right to modify these Terms at any time. Any changes will be effective immediately upon posting the revised Terms within the App. Your continued use of the App following the posting of changes constitutes your acceptance of such changes.</p>
+        </section>
+
+        <section>
+            <h2>14. Governing Law</h2>
+            <p>These Terms shall be governed by and construed in accordance with the laws of England and Wales, without regard to its conflict of law provisions.</p>
+        </section>
+
+        <section>
+            <h2>15. Severability</h2>
+            <p>If any provision of these Terms is found to be unenforceable or invalid, the remaining provisions will remain in effect.</p>
+        </section>
+
+        <section>
+            <h2>16. Permitted Use and Limitations</h2>
+            <p>Users are authorized to use Docecho for translating individual documents. The App is not designed or intended for the translation of entire books or substantial portions thereof. Attempting to use the App for such purposes is prohibited and may result in suspension or termination of your access to the App.</p>
+        </section>
+        
+
+        <section>
+            <h2>17. Contact Information</h2>
+            <div class="contact-info">
+                <p>If you have any questions or concerns about these Terms, please contact us at:</p>
+                <p>Email: <a href="mailto:gabbipereira03@gmail.com">gabbipereira03 [at]gmail.com</a></p>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,37 @@
+:root {
+  /* Light Theme Colors */
+  --bg-primary: #ffffff;        /* Main white background */
+  --bg-secondary: #f7f7f8;      /* Light gray background for cards */
+  --bg-tertiary: #ececf1;       /* Slightly darker gray for inputs */
+  --bg-chat: var(--bg-primary); /* For chat background */
+  --bg-sidebar: var(--bg-secondary); /* For sidebar */
+  
+  /* Text colors */
+  --text-primary: #2d2d2d;      /* Main dark text */
+  --text-secondary: #40414f;    /* Secondary text */
+  --text-tertiary: #6e6e80;     /* Tertiary/muted text */
+  
+  /* Brand colors */
+  --primary-color: #10a37f;     /* ChatGPT green */
+  --primary-hover: #0e906f;     /* Darker green for hover */
+  --accent-color: #19c37d;      /* Lighter green */
+  --btn-primary: var(--primary-color);
+  --btn-hover: var(--primary-hover);
+  
+  /* UI elements */
+  --border-color: #e5e5e7;      /* Light border color */
+  --card-bg: var(--bg-secondary);
+  --input-bg: var(--bg-tertiary);
+}
+
+/* Base font settings */
+body {
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Form elements */
+input, select, textarea {
+  font-family: inherit;
+  font-weight: 400;
+}
+  

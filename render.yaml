@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: docecho
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: |
+      python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all()" && \
+      gunicorn wsgi:app --timeout 120 --workers 2 --threads 2
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.12
+      - key: FLASK_ENV
+        value: production
+      - key: RENDER
+        value: "true"
+    disk:
+      name: data
+      mountPath: /opt/data
+      sizeGB: 1

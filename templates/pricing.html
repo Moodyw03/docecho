@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block meta_tags %}
+<title>DocEcho Pricing | Affordable PDF Translation & Audio Conversion Plans</title>
+<meta name="description" content="Choose from our flexible pricing plans for PDF translation and audio conversion. Pay as you go with credits that never expire.">
+<meta name="keywords" content="PDF translator pricing, document conversion cost, translation services pricing, PDF to audio cost">
+
+<!-- Open Graph Meta Tags -->
+<meta property="og:title" content="DocEcho Pricing | PDF Translation & Audio Conversion Plans">
+<meta property="og:description" content="Flexible pricing plans for all your PDF translation and audio conversion needs.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ request.url }}">
+
+<!-- Twitter Card Meta Tags -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DocEcho Pricing Plans">
+<meta name="twitter:description" content="Affordable PDF translation and audio conversion services.">
+{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+    body {
+        font-family: 'Poppins', sans-serif;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        background-color: var(--bg-secondary);
+        color: var(--text-color);
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    header {
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+
+    header h1 {
+        font-size: clamp(1.8rem, 4vw, 2.5rem);
+        font-weight: 700;
+        margin: 0.8rem 0 0.1rem;
+        color: var(--primary-color);
+        text-align: center;
+        letter-spacing: -0.5px;
+    }
+
+    header p {
+        font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+        text-align: center;
+        color: var(--text-secondary);
+        margin-bottom: 0.8rem;
+        opacity: 1;
+        font-weight: 300;
+    }
+
+    .pricing-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 2rem;
+        margin-bottom: 3rem;
+    }
+
+    .pricing-card {
+        background: var(--bg-primary);
+        border-radius: 20px;
+        padding: 2rem;
+        text-align: center;
+        border: 1px solid var(--border-color);
+        transition: transform 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .pricing-card:hover {
+        transform: translateY(-10px);
+    }
+
+    .pricing-card h2 {
+        color: var(--primary-color);
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .price {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: var(--text-color);
+        margin-bottom: 0.5rem;
+    }
+
+    .credits {
+        color: var(--primary-color);
+        font-size: 1.2rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 2rem 0;
+    }
+
+    .features li {
+        margin-bottom: 0.8rem;
+        color: var(--text-color);
+    }
+
+    .btn {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        font-size: 1.1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        width: 100%;
+        font-weight: 600;
+    }
+
+    .btn:hover {
+        background: var(--primary-hover);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(16, 163, 127, 0.2);
+    }
+
+    .btn:disabled {
+        background: #666;
+        cursor: not-allowed;
+    }
+
+    .info-section {
+        text-align: center;
+        background: var(--bg-primary);
+        border-radius: 20px;
+        padding: 2rem;
+        margin-top: 2rem;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .info-section h2 {
+        color: var(--primary-color);
+        margin-bottom: 1.5rem;
+    }
+
+    .info-section p {
+        margin-bottom: 0.8rem;
+        color: var(--text-color);
+    }
+
+    @media (max-width: 768px) {
+        .container {
+            padding: 1rem;
+        }
+
+        .pricing-grid {
+            gap: 1rem;
+        }
+
+        .pricing-card {
+            padding: 1.5rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+        }
+
+        .price {
+            font-size: 2rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <header>
+        <h1>DocEcho</h1>
+        <p>Pay as you go - Only for what you need</p>
+    </header>
+
+    <div class="pricing-grid">
+        <div class="pricing-card">
+            <h2>Starter Pack</h2>
+            <div class="price">$10</div>
+            <div class="credits">10 Credits</div>
+            <ul class="features">
+                <li>1 credit per PDF page</li>
+                <li>2 credits per audio page</li>
+                <li>All languages supported</li>
+                <li>Credits never expire</li>
+            </ul>
+            <button class="btn" onclick="purchaseCredits('starter')">Buy Credits</button>
+        </div>
+
+        <div class="pricing-card">
+            <h2>Value Pack</h2>
+            <div class="price">$25</div>
+            <div class="credits">45 Credits</div>
+            <ul class="features">
+                <li>1 credit per PDF page</li>
+                <li>2 credits per audio page</li>
+                <li>All languages supported</li>
+                <li>Credits never expire</li>
+            </ul>
+            <button class="btn" onclick="purchaseCredits('value')">Buy Credits</button>
+        </div>
+
+        <div class="pricing-card">
+            <h2>Pro Pack</h2>
+            <div class="price">$50</div>
+            <div class="credits">100 Credits</div>
+            <ul class="features">
+                <li>1 credit per PDF page</li>
+                <li>2 credits per audio page</li>
+                <li>All languages supported</li>
+                <li>Credits never expire</li>
+            </ul>
+            <button class="btn" onclick="purchaseCredits('pro')">Buy Credits</button>
+        </div>
+    </div>
+
+    <div class="info-section">
+        <h2>How Credits Work</h2>
+        <p>• PDF Translation: 1 credit per page</p>
+        <p>• Audio Conversion: 2 credits per page</p>
+        <p>• Mix and match between PDF and audio as needed</p>
+        <p>• Credits never expire - Use them anytime</p>
+    </div>
+</div>
+
+<script>
+    var stripe = Stripe('{{ stripe_public_key }}');
+
+    function purchaseCredits(package) {
+        const button = event.target;
+        button.disabled = true;
+        button.textContent = 'Processing...';
+
+        fetch('/create-checkout-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'package=' + package
+        })
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(session) {
+            if (session.error) {
+                alert(session.error);
+                button.disabled = false;
+                button.textContent = 'Buy Credits';
+                return;
+            }
+            return stripe.redirectToCheckout({ sessionId: session.id });
+        })
+        .catch(function(error) {
+            console.error('Error:', error);
+            alert('An error occurred. Please try again.');
+            button.disabled = false;
+            button.textContent = 'Buy Credits';
+        });
+    }
+</script>
+{% endblock %}

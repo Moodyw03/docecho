@@ -1,0 +1,14 @@
+Flask==2.3.3
+PyPDF2==3.0.1
+gTTS==2.3.2
+pydub==0.25.1
+googletrans==3.1.0a0
+reportlab==4.0.4
+Flask-Login==0.6.2
+Flask-SQLAlchemy==3.0.5
+Werkzeug==2.3.7
+stripe==6.1.0
+python-dotenv==1.0.0
+gunicorn==21.2.0
+SQLAlchemy==2.0.23
+

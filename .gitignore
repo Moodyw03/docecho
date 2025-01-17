@@ -1,0 +1,27 @@
+# Virtual Environment
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.*
+
+# Instance folder and database
+instance/
+*.db
+*.sqlite3
+
+# Generated files
+output/
+uploads/
+temp/
+*.mp3
+
+# OS files
+.DS_Store
+Thumbs.db
