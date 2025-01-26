@@ -17,7 +17,7 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Set up static folders
-    STATIC_FOLDER = '/data' if os.environ.get('RENDER') else 'static'
+    STATIC_FOLDER = '/opt/data' if os.environ.get('RENDER') else 'static'
     app.config['UPLOAD_FOLDER'] = os.path.join(STATIC_FOLDER, 'uploads')
     app.config['OUTPUT_FOLDER'] = os.path.join(STATIC_FOLDER, 'output')
     app.config['TEMP_FOLDER'] = os.path.join(STATIC_FOLDER, 'temp')
