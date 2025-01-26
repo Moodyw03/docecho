@@ -4,31 +4,16 @@ from flask_login import LoginManager
 import os
 import shutil
 import redis
-from flask_mail import Mail
 from flask_migrate import Migrate
+from dotenv import load_dotenv
 
 # Initialize extensions without the app
 db = SQLAlchemy()
 login_manager = LoginManager()
 
-# Create mail instance outside the factory function
-mail = Mail()
-
 def create_app():
     app = Flask(__name__)
-    
-    # Replace the hardcoded mail config with environment variables
-    app.config.update(
-        MAIL_SERVER=os.getenv('MAIL_SERVER'),
-        MAIL_PORT=int(os.getenv('MAIL_PORT', 2525)),
-        MAIL_USE_TLS=os.getenv('MAIL_USE_TLS', 'true').lower() in ['true', '1'],
-        MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
-        MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
-        MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER', 'noreply@docecho.com')
-    )
-    
-    # Initialize mail with app
-    mail.init_app(app)
+    load_dotenv()  # Ensure environment variables are loaded
     
     # Add JWT secret key
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET')

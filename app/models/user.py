@@ -18,6 +18,15 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    def set_verification_token(self, token):
+        self.verification_token = token
+        db.session.commit()
+
+    def verify(self):
+        self.email_verified = True
+        self.verification_token = None
+        db.session.commit()
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))

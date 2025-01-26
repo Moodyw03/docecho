@@ -6,9 +6,11 @@ from app import db
 import jwt
 from datetime import datetime, timedelta
 from flask import current_app
-from flask_mail import Message
 from werkzeug.security import generate_password_hash
-from app import mail
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+import os
+from sqlalchemy import func
 
 bp = Blueprint('auth', __name__)
 
@@ -39,7 +41,8 @@ def register():
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
-            if User.query.filter_by(email=form.email.data).first():
+            email = form.email.data.strip().lower()  # Normalize email
+            if User.query.filter(func.lower(User.email) == email).first():
                 flash('Email address already exists', 'danger')
                 return redirect(url_for('auth.register'))
             
@@ -47,7 +50,17 @@ def register():
             new_user.set_password(form.password.data)
             
             db.session.add(new_user)
-            db.session.commit()
+            db.session.commit()  # First commit to get user ID
+            
+            token = jwt.encode(
+                {
+                    'user_id': new_user.id,
+                    'exp': datetime.utcnow() + timedelta(hours=24)
+                },
+                current_app.config['JWT_SECRET_KEY'],
+                algorithm='HS256'
+            ).decode('utf-8')  # Generate token after commit
+            new_user.set_verification_token(token)
             
             send_verification_email(new_user)
             flash('Registration successful! Check your email to verify.', 'success')
@@ -94,14 +107,8 @@ def verify_email(token):
     return redirect(url_for('auth.login'))
 
 def send_verification_email(user):
-    # Change this to True to enable email sending
-    if False:  # Change this to False to actually send emails
-        user.email_verified = True
-        db.session.commit()
-        current_app.logger.info("Bypassed email verification for development")
-        return
     try:
-        # Generate verification token
+        # Ensure proper token encoding
         token = jwt.encode(
             {
                 'user_id': user.id,
@@ -109,26 +116,40 @@ def send_verification_email(user):
             },
             current_app.config['JWT_SECRET_KEY'],
             algorithm='HS256'
-        )
+        ).decode('utf-8')  # Add decode for Flask-JWT compatibility
         
-        # Create verification URL
         verification_url = url_for('auth.verify_email', token=token, _external=True)
         
-        # Build email message
-        msg = Message('Verify Your Email Address', recipients=[user.email])
-        msg.html = render_template(
-            'emails/verify_email.html',
-            verification_url=verification_url
-        )
+        # Add debug logging
+        current_app.logger.debug(f"Verification URL: {verification_url}")
+        current_app.logger.debug(f"Sending to: {user.email}")
         
-        # Attempt to send email
-        mail.send(msg)
-        current_app.logger.info(f"Verification email sent to {user.email}")
+        # Create SendGrid mail object
+        message = Mail(
+            from_email=current_app.config['MAIL_DEFAULT_SENDER'],
+            to_emails=user.email,
+            subject='Verify Your Email Address',
+            html_content=render_template(
+                'emails/verify_email.html',
+                verification_url=verification_url
+            ))
+        
+        # Send using SendGrid API
+        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        
+        # Add verification
+        if not sg.client.api_key:
+            current_app.logger.error("NO SENDGRID API KEY FOUND!")
+            raise ValueError("Missing SendGrid API key")
+        
+        response = sg.send(message)
+        
+        current_app.logger.info(f"Email sent to {user.email} - Status: {response.status_code}")
         
     except Exception as e:
         current_app.logger.error(f"Email error: {str(e)}")
-        # Temporary debug output
-        print(f"Verification URL: {verification_url}")
+        if hasattr(e, 'body'):
+            current_app.logger.error(f"SendGrid error details: {e.body}")
 
 @bp.route('/resend-verification')
 @login_required
@@ -143,3 +164,26 @@ def resend_verification():
         flash('Failed to resend verification email', 'danger')
     
     return redirect(url_for('auth.login'))
+
+@bp.route('/test-sendgrid')
+def test_sendgrid():
+    try:
+        message = Mail(
+            from_email=current_app.config['MAIL_DEFAULT_SENDER'],
+            to_emails='gabbipereira03@gmail.com',
+            subject='SendGrid Test',
+            html_content='<strong>This is a test from Flask</strong>')
+        
+        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        response = sg.send(message)
+        return f"Email sent! Status: {response.status_code}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@bp.route('/debug-verify/<email>')
+def debug_verify(email):
+    user = User.query.filter_by(email=email).first()
+    if user:
+        send_verification_email(user)
+        return f"Verification email re-sent to {email}"
+    return "User not found"

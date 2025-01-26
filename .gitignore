@@ -24,4 +24,5 @@ temp/
 
 # OS files
 .DS_Store
-Thumbs.db
+Thumbs.dbsendgrid.env
+sendgrid.env
