@@ -17,15 +17,14 @@ mail = Mail()
 def create_app():
     app = Flask(__name__)
     
-    # Add these email configurations
+    # Replace the hardcoded mail config with environment variables
     app.config.update(
-        MAIL_SERVER='sandbox.smtp.mailtrap.io',
-        MAIL_PORT=2525,  # Switch back to Mailtrap's recommended port
-        MAIL_USE_TLS=True,
-        MAIL_USE_SSL=False,
-        MAIL_USERNAME='995eb6fef7d27e',  # Your Mailtrap username
-        MAIL_PASSWORD='1baef8512e1249',  # Your Mailtrap password
-        MAIL_DEFAULT_SENDER='noreply@docecho.com'
+        MAIL_SERVER=os.getenv('MAIL_SERVER'),
+        MAIL_PORT=int(os.getenv('MAIL_PORT', 2525)),
+        MAIL_USE_TLS=os.getenv('MAIL_USE_TLS', 'true').lower() in ['true', '1'],
+        MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
+        MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
+        MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER', 'noreply@docecho.com')
     )
     
     # Initialize mail with app

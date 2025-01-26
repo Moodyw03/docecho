@@ -94,8 +94,8 @@ def verify_email(token):
     return redirect(url_for('auth.login'))
 
 def send_verification_email(user):
-    # Change this to False to test email sending
-    if False:
+    # Change this to True to enable email sending
+    if False:  # Change this to False to actually send emails
         user.email_verified = True
         db.session.commit()
         current_app.logger.info("Bypassed email verification for development")
