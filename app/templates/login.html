@@ -145,7 +145,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST">
+        <form method="POST" action="{{ url_for('auth.login') }}">
             <div class="form-group">
                 <label for="email">Email</label>
                 <input type="email" id="email" name="email" required>
@@ -157,7 +157,7 @@
             <button type="submit" class="btn">Login</button>
         </form>
         <div class="auth-links">
-            Don't have an account? <a href="{{ url_for('register') }}">Register</a>
+            Don't have an account? <a href="{{ url_for('auth.register') }}">Register</a>
         </div>
     </div>
 </div>

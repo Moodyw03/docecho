@@ -445,14 +445,14 @@
   <footer>
     <p>
       &copy; 2024 DocEcho |
-      <a href="{{ url_for('index') }}">Home</a> |
-      <a href="{{ url_for('pricing') }}">Pricing</a> |
+      <a href="{{ url_for('main.index') }}">Home</a> |
+      <a href="{{ url_for('main.pricing') }}">Pricing</a> |
       {% if current_user.is_authenticated %}
         <a href="#">Credits: {{ current_user.credits }}</a> |
-        <a href="{{ url_for('logout') }}">Logout</a>
+        <a href="{{ url_for('auth.logout') }}">Logout</a>
       {% else %}
-        <a href="{{ url_for('login') }}">Login</a> |
-        <a href="{{ url_for('register') }}">Register</a>
+        <a href="{{ url_for('auth.login') }}">Login</a> |
+        <a href="{{ url_for('auth.register') }}">Register</a>
       {% endif %}
     </p>
   </footer>
@@ -489,7 +489,7 @@
         
         // Check authentication first
         {% if not current_user.is_authenticated %}
-            window.location.href = "{{ url_for('login') }}";
+            window.location.href = "{{ url_for('auth.login') }}";
             return;
         {% endif %}
         
@@ -520,12 +520,12 @@
             }
 
             if (response.status === 401) {
-                window.location.href = "{{ url_for('login') }}";
+                window.location.href = "{{ url_for('auth.login') }}";
                 throw new Error('Please login to use this service');
             }
 
             if (response.status === 402) {
-                window.location.href = "{{ url_for('pricing') }}";
+                window.location.href = "{{ url_for('main.pricing') }}";
                 throw new Error('Insufficient credits. Please purchase more credits.');
             }
 
