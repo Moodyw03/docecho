@@ -17,4 +17,7 @@ redis==5.0.1
 Flask-Mail==0.9.1
 PyJWT==2.8.0
 Flask-Migrate==4.0.5
+sendgrid==6.10.0
+python-http-client>=3.3.7
+starkbank-ecdsa>=2.2.0
 

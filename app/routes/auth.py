@@ -53,12 +53,12 @@ def register():
                 return redirect(url_for('auth.register'))
             
             print("Creating new user...")
-            new_user = User(email=form.email.data)
+            new_user = User(email=form.email.data, credits=5)  # Set initial credits to 5
             new_user.set_password(form.password.data)
             
             db.session.add(new_user)
             db.session.commit()
-            print(f"User created with ID: {new_user.id}")
+            print(f"User created with ID: {new_user.id} and {new_user.credits} credits")
             
             print("Generating verification token...")
             token = jwt.encode(
