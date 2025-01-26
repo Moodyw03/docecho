@@ -1,15 +1,611 @@
 {% extends "base.html" %}
 
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root {
+      /* Light Theme Colors */
+      --primary-color: #10a37f;     /* ChatGPT green */
+      --primary-hover: #0e906f;     /* Darker green for hover */
+      --accent-color: #19c37d;      /* Lighter green */
+      --text-color: #2d2d2d;        /* Dark text */
+      --text-secondary: #40414f;    /* Secondary text */
+      --text-muted: #6e6e80;        /* Muted text */
+      --bg-primary: #ffffff;        /* Main white background */
+      --bg-secondary: #f7f7f8;      /* Light gray background */
+      --card-bg: #ffffff;           /* White card background */
+      --border-color: #e5e5e7;      /* Light border color */
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background-color: var(--bg-secondary);  /* Replace gradient with solid color */
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1.6;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Remove the body::before gradient overlay */
+    body::before {
+      display: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      padding: 1rem;
+      margin: 0 auto;
+      height: calc(100vh - 80px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .glass-container {
+      background: var(--bg-primary);
+      backdrop-filter: none;  /* Remove blur effect */
+      -webkit-backdrop-filter: none;
+      border-radius: 24px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      width: 90%;
+      max-width: 600px;
+      margin: 0 auto 70px;
+      border: 1px solid var(--border-color);
+      transition: transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glass-container:hover {
+      transform: translateY(-5px);
+    }
+
+    header {
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      font-weight: 700;
+      margin: 0.8rem 0 0.1rem;
+      color: var(--primary-color);  /* Replace gradient text with solid color */
+      background: none;
+      -webkit-background-clip: unset;
+      background-clip: unset;
+      text-align: center;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 0.8rem;
+      opacity: 1;
+      font-weight: 300;
+    }
+
+    .dropzone {
+      border: 2px dashed var(--border-color);
+      padding: 0.6rem;
+      border-radius: 20px;
+      background: var(--bg-secondary);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      text-align: center;
+      margin-bottom: 0.4rem;
+    }
+
+    .dropzone:hover {
+      border-color: var(--primary-color);
+      background: rgba(16, 163, 127, 0.05);
+      transform: scale(1.02);
+    }
+
+    .dropzone svg {
+      width: 30px;
+      height: 30px;
+      margin-bottom: 0.3rem;
+      stroke: var(--primary-color);
+    }
+
+    .dropzone p {
+      margin: 0.2rem 0;
+      font-size: 0.9rem;
+    }
+
+    .dropzone input[type="file"] {
+      display: none;
+    }
+
+    .options {
+      margin: 0.4rem 0;
+    }
+
+    .options label {
+      display: block;
+      margin-bottom: 0.3rem;
+      color: var(--text-color);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    select {
+      width: 100%;
+      padding: 0.6rem;
+      border-radius: 12px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    select:hover {
+      border-color: var(--primary-color);
+      background: rgba(16, 163, 127, 0.05);
+    }
+
+    .btn {
+      background: var(--primary-color);  /* Replace gradient with solid color */
+      color: white;
+      padding: 0.7rem;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.3s ease;
+      font-family: 'Poppins', sans-serif;
+      margin-top: 0.4rem;
+    }
+
+    .btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(16, 163, 127, 0.2);
+    }
+
+    #progressContainer {
+      width: 100%;
+      margin-top: 0.6rem;
+      background: var(--bg-secondary);
+      padding: 0.5rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      position: relative;
+      z-index: 10;
+    }
+
+    #progressBar {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+      height: 6px;
+      margin-top: 0.4rem;
+    }
+
+    #progressBarFill {
+      height: 100%;
+      background: var(--primary-color);  /* Replace gradient with solid color */
+      transition: width 0.3s ease;
+      border-radius: 8px;
+      width: 0%;
+    }
+
+    #statusMessage {
+      text-align: center;
+      margin-bottom: 0.3rem;
+      font-size: 0.85rem;
+      color: var(--text-color);
+      font-weight: 500;
+    }
+
+    .uploaded-file {
+      color: #4CAF50;
+      margin: 0.5rem 0;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    footer {
+      padding: 0.8rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      width: 100%;
+      background: var(--bg-primary);
+      position: fixed;
+      bottom: 0;
+      border-top: 1px solid var(--border-color);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      z-index: 5;
+    }
+
+    footer a {
+      color: var(--primary-color);
+      text-decoration: none;
+      margin: 0 0.5rem;
+      transition: color 0.3s ease;
+      font-weight: 500;
+    }
+
+    footer a:hover {
+      color: var(--primary-hover);
+    }
+
+    /* Custom range input styling */
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 6px;
+      background: var(--bg-secondary);
+      outline: none;
+      margin: 0.4rem 0;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+      background: var(--primary-hover);
+    }
+
+    .speed-value {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-color);
+      margin-top: 0.2rem;
+      font-weight: 500;
+    }
+
+    /* Responsive Design */
+    @media (min-height: 800px) {
+      .glass-container {
+        padding: 1.5rem;
+      }
+      
+      .options {
+        margin: 0.8rem 0;
+      }
+      
+      .dropzone {
+        padding: 1rem;
+      }
+    }
+
+    @media (max-height: 800px) {
+      .glass-container {
+        padding: 1rem;
+        margin: 0.5rem auto 70px;
+      }
+
+      .options {
+        margin: 0.5rem 0;
+      }
+
+      .dropzone {
+        padding: 0.8rem;
+      }
+
+      .btn {
+        padding: 0.8rem;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        overflow-y: auto;
+      }
+
+      .container {
+        height: auto;
+        padding: 1rem;
+        margin-bottom: 60px;
+      }
+
+      .glass-container {
+        width: 95%;
+        margin: 1rem auto 70px;
+      }
+
+      header {
+        font-size: 1.8rem;
+        margin: 0.5rem 0;
+      }
+
+      .subtitle {
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .glass-container {
+        padding: 1rem;
+        margin: 0.5rem auto 60px;
+      }
+
+      .options label {
+        font-size: 0.9rem;
+      }
+
+      select, .btn {
+        padding: 0.7rem;
+      }
+
+      #progressContainer {
+        padding: 0.5rem;
+      }
+    }
+
+    /* Animation for the progress bar */
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.7; }
+      100% { opacity: 1; }
+    }
+
+    #progressBarFill.loading {
+      animation: pulse 1.5s infinite;
+    }
+
+    /* Remove gradient animation */
+    @keyframes gradient {
+      0%, 100% {
+        background-position: 0% 50%;
+      }
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
-<div class="container">
-    <header>DocEcho</header>
-    <div class="main-content">
-        <h1>Welcome to DocEcho</h1>
-        {% if current_user.is_authenticated %}
-            <p>You are logged in as {{ current_user.email }}</p>
-        {% else %}
-            <p>Please <a href="{{ url_for('auth.login') }}">login</a> or <a href="{{ url_for('auth.register') }}">register</a> to continue.</p>
-        {% endif %}
+<header>DocEcho</header>
+<div class="subtitle">Audio, Text, and Translation of PDF Documents Simplified</div>
+<div class="glass-container">
+    <form id="uploadForm" action="/" method="POST" enctype="multipart/form-data">
+      <div class="dropzone">
+        <label for="pdf_file" id="fileLabel">
+          <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p>Drag and drop your PDF here, or click to select</p>
+        </label>
+        <input type="file" name="pdf_file" id="pdf_file" accept="application/pdf" />
+        <p class="uploaded-file" id="uploadedFileName"></p>
+      </div>
+
+      <div class="options">
+        <label for="voice">Voice</label>
+        <select name="voice" id="voice">
+          <option value="en">English (US)</option>
+          <option value="en-uk">English (UK)</option>
+          <option value="pt">Portuguese</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="zh-CN">Chinese (Mandarin)</option>
+          <option value="ja">Japanese</option>
+        </select>
+      </div>
+
+      <div class="options">
+        <label for="output_format">Output Format</label>
+        <select name="output_format" id="output_format">
+          <option value="audio">Audio (MP3)</option>
+          <option value="pdf">PDF Document</option>
+          <option value="both">Both (Audio & PDF)</option>
+        </select>
+      </div>
+
+      <div class="options">
+        <label for="speed">Speed</label>
+        <input type="range" name="speed" id="speed" min="0.5" max="2.0" step="0.1" value="1.0" />
+        <div class="speed-value" id="speedValue">1.0x</div>
+      </div>
+
+      <button type="submit" class="btn">Convert to Audio</button>
+    </form>
+
+    <div id="progressContainer" style="display: none;">
+      <p id="statusMessage"></p>
+      <div id="progressBar">
+        <div id="progressBarFill"></div>
+      </div>
     </div>
-</div>
-{% endblock %} 
+  </div>
+
+  <footer>
+    <p>
+      &copy; 2024 DocEcho |
+      <a href="{{ url_for('index') }}">Home</a> |
+      <a href="{{ url_for('pricing') }}">Pricing</a> |
+      {% if current_user.is_authenticated %}
+        <a href="#">Credits: {{ current_user.credits }}</a> |
+        <a href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a href="{{ url_for('login') }}">Login</a> |
+        <a href="{{ url_for('register') }}">Register</a>
+      {% endif %}
+    </p>
+  </footer>
+
+  <script>
+    document.getElementById("pdf_file").addEventListener("change", function () {
+        var fileName = this.files[0].name;
+        document.getElementById("uploadedFileName").textContent = "Selected: " + fileName;
+    });
+
+    document.getElementById("speed").addEventListener("input", function() {
+        document.getElementById("speedValue").textContent = this.value + "x";
+    });
+
+    function updateButtonText() {
+        const outputFormat = document.getElementById("output_format").value;
+        const button = document.querySelector(".btn");
+        switch(outputFormat) {
+            case "pdf":
+                button.textContent = "Convert to PDF";
+                break;
+            case "both":
+                button.textContent = "Convert to Audio & PDF";
+                break;
+            default:
+                button.textContent = "Convert to Audio";
+        }
+    }
+
+    document.getElementById("output_format").addEventListener("change", updateButtonText);
+
+    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        
+        // Check authentication first
+        {% if not current_user.is_authenticated %}
+            window.location.href = "{{ url_for('login') }}";
+            return;
+        {% endif %}
+        
+        // Show progress container and reset its state
+        const progressContainer = document.getElementById("progressContainer");
+        const statusMessage = document.getElementById("statusMessage");
+        const progressBarFill = document.getElementById("progressBarFill");
+        
+        progressContainer.style.display = "block";
+        statusMessage.textContent = "Starting upload...";
+        progressBarFill.style.width = "0%";
+        
+        var formData = new FormData(this);
+        
+        try {
+            const response = await fetch("/", {
+                method: "POST",
+                body: formData,
+                credentials: 'include',  // Include credentials
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'  // Add this header
+                }
+            });
+
+            if (response.redirected) {
+                window.location.href = response.url;
+                return;
+            }
+
+            if (response.status === 401) {
+                window.location.href = "{{ url_for('login') }}";
+                throw new Error('Please login to use this service');
+            }
+
+            if (response.status === 402) {
+                window.location.href = "{{ url_for('pricing') }}";
+                throw new Error('Insufficient credits. Please purchase more credits.');
+            }
+
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            if (data.task_id) {
+                checkProgress(data.task_id);
+            }
+        } catch (error) {
+            statusMessage.textContent = "Error: " + error.message;
+            console.error("Error:", error);
+        }
+    });
+
+    function checkProgress(taskId) {
+        fetch("/progress/" + taskId)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById("statusMessage").textContent = data.status;
+            document.getElementById("progressBarFill").style.width = data.progress + "%";
+            
+            if (data.status === "Completed") {
+                document.getElementById("progressBarFill").style.width = "100%";
+                const outputFormat = document.getElementById("output_format").value;
+                
+                if (outputFormat === "both") {
+                    document.getElementById("statusMessage").textContent = "Processing completed. Downloading files...";
+                    // Download both formats
+                    window.location.href = "/download/" + taskId + "?format=audio";
+                    setTimeout(() => {
+                        window.location.href = "/download/" + taskId + "?format=pdf";
+                    }, 1000);
+                } else {
+                    document.getElementById("statusMessage").textContent = "Processing completed. Downloading file...";
+                    window.location.href = "/download/" + taskId + "?format=" + outputFormat;
+                }
+            } else if (data.status === "Error") {
+                document.getElementById("statusMessage").textContent = "Error: " + data.error;
+            } else {
+                setTimeout(() => checkProgress(taskId), 2000);
+            }
+        })
+        .catch(error => {
+            document.getElementById("statusMessage").textContent = "Error checking progress: " + error.message;
+            console.error("Error:", error);
+        });
+    }
+
+    // Call updateButtonText on page load
+    updateButtonText();
+
+    // Add this function to handle language-based restrictions
+    function updateOutputOptions() {
+        const selectedVoice = document.getElementById("voice").value;
+        const outputFormat = document.getElementById("output_format");
+        const asianLanguages = ['ja', 'zh-CN'];
+        
+        if (asianLanguages.includes(selectedVoice)) {
+            // For Japanese and Chinese, restrict to audio only
+            outputFormat.value = 'audio';
+            outputFormat.disabled = true;
+            // Add a note about the restriction
+            document.getElementById("formatNote").style.display = "block";
+        } else {
+            // For other languages, enable all options
+            outputFormat.disabled = false;
+            document.getElementById("formatNote").style.display = "none";
+        }
+        
+        updateButtonText();
+    }
+
+    // Add this after your existing voice select element
+    document.getElementById("voice").addEventListener("change", updateOutputOptions);
+
+    // Call on page load
+    document.addEventListener("DOMContentLoaded", updateOutputOptions);
+  </script>
+{% endblock %}

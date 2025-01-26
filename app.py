@@ -58,7 +58,9 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__, 
+                template_folder='app/templates',
+                static_folder='static')
     app.secret_key = os.getenv('FLASK_SECRET_KEY')
     
     # Create instance directory if it doesn't exist
