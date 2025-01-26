@@ -134,18 +134,21 @@ def download(task_id):
         file_path = data['audio_file'] if file_type == 'audio' else data['pdf_file']
         current_app.logger.info(f"File path for {file_type}: {file_path}")
         
+        # Verify file exists before sending
         if not os.path.exists(file_path):
             current_app.logger.error(f"File not found at path: {file_path}")
-            return jsonify({"error": f"{file_type.upper()} file not found at expected location"}), 404
-            
-        # Get just the filename from the full path
-        filename = os.path.basename(file_path)
-        
+            return jsonify({"error": f"{file_type.upper()} file not found"}), 404
+
+        # Get fresh file handle
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"{file_type.upper()} file not found")
+
         response = send_file(
             file_path,
             mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf',
             as_attachment=True,
-            download_name=filename
+            download_name=os.path.basename(file_path),
+            conditional=True  # Add conditional sending
         )
         
         # Only delete progress if both files have been downloaded

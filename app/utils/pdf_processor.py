@@ -197,13 +197,15 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
         if audio_chunks and output_format in ["audio", "both"]:
             concatenate_audio_files(audio_chunks, output_path)
             
-            # Update progress with both files if both formats
+            # Always update with audio path first
             update_data = {
                 'audio_file': output_path,
                 'status': 'completed',
                 'progress': 100
             }
-            if output_format == "both":
+            
+            # Add PDF path if both formats requested
+            if output_format == "both" and 'pdf_path' in locals():
                 update_data['pdf_file'] = pdf_path
                 
             update_progress(task_id, **update_data)

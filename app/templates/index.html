@@ -567,15 +567,19 @@
                 
                 if (data.status === 'completed') {
                     const outputFormat = document.getElementById("output_format").value;
+                    
+                    // Always handle audio first
                     if (outputFormat === "both") {
-                        // Create hidden iframe for PDF download
-                        const pdfIframe = document.createElement('iframe');
-                        pdfIframe.style.display = 'none';
-                        pdfIframe.src = `/download/${taskId}?type=pdf&final=true`;
-                        document.body.appendChild(pdfIframe);
+                        // Create hidden iframe for audio download first
+                        const audioIframe = document.createElement('iframe');
+                        audioIframe.style.display = 'none';
+                        audioIframe.src = `/download/${taskId}?type=audio&final=false`;
+                        document.body.appendChild(audioIframe);
                         
-                        // Trigger audio download
-                        window.location.href = `/download/${taskId}?type=audio&final=false`;
+                        // Then trigger PDF download
+                        setTimeout(() => {
+                            window.location.href = `/download/${taskId}?type=pdf&final=true`;
+                        }, 1000);
                     } else {
                         window.location.href = `/download/${taskId}?type=${outputFormat}&final=true`;
                     }
