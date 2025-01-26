@@ -2,7 +2,6 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
-from app.config import Config
 import shutil
 
 # Initialize extensions without the app
@@ -13,7 +12,9 @@ def create_app():
     app = Flask(__name__)
     
     # Configure the app
-    app.config.from_object(Config)
+    app.config['SECRET_KEY'] = 'your-secret-key'  # Change this to a secure key
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///docecho.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Set up static folders
     STATIC_FOLDER = '/data' if os.environ.get('RENDER') else 'static'
