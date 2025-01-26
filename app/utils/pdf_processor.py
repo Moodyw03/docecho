@@ -4,6 +4,7 @@ from pydub import AudioSegment
 from googletrans import Translator
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from app.utils.progress import update_progress
 import os
 
 # Mapping language codes and TLDs for accents
@@ -54,8 +55,12 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=500):
 
 def convert_text_to_audio(text, output_filename, voice, speed, tld='com'):
     try:
-        temp_output = os.path.join('temp', output_filename.replace(".mp3", "_temp.mp3"))
-        output_path = os.path.join('temp', output_filename)
+        temp_dir = os.path.join(os.getcwd(), 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        temp_output = os.path.join(temp_dir, output_filename.replace(".mp3", "_temp.mp3"))
+        output_path = os.path.join(temp_dir, output_filename)
+        
         tts = gTTS(text, lang=voice, tld=tld)
         tts.save(temp_output)
 
@@ -63,7 +68,8 @@ def convert_text_to_audio(text, output_filename, voice, speed, tld='com'):
             sound = AudioSegment.from_file(temp_output)
             sound = sound.speedup(playback_speed=speed)
             sound.export(output_path, format="mp3")
-            os.remove(temp_output)
+            if os.path.exists(temp_output):
+                os.remove(temp_output)
         else:
             os.rename(temp_output, output_path)
 
@@ -119,12 +125,15 @@ def create_translated_pdf(text, output_path, language_code='en'):
     except Exception as e:
         raise Exception(f"Error creating PDF: {str(e)}")
 
-def process_pdf(filename, file_path, voice, speed, task_id, output_format, progress_dict, output_path):
+def process_pdf(filename, file_path, voice, speed, task_id, output_format, output_path):
     try:
-        if not os.path.exists('temp'):
-            os.makedirs('temp')
+        # Create temp and output directories
+        output_dir = os.path.dirname(output_path)  # Get the output directory from the audio path
+        temp_dir = os.path.join(output_dir, 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
-        progress_dict[task_id]['status'] = 'Extracting text from PDF...'
+        update_progress(task_id, status='Extracting text from PDF...', progress=0)
         text_chunks = extract_text_chunks_from_pdf(file_path)
         total_chunks = len(text_chunks)
 
@@ -144,8 +153,11 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, progr
             
             for i, chunk in enumerate(batch):
                 overall_progress = int(((batch_start + i) / total_chunks) * 100)
-                progress_dict[task_id]['progress'] = overall_progress
-                progress_dict[task_id]['status'] = f'Processing chunk {batch_start + i + 1} of {total_chunks}...'
+                update_progress(
+                    task_id,
+                    status=f'Processing chunk {batch_start + i + 1} of {total_chunks}...',
+                    progress=overall_progress
+                )
 
                 try:
                     translated_chunk = translator.translate(chunk, dest=lang_settings["lang"]).text
@@ -167,14 +179,33 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, progr
 
         # Handle PDF output
         if output_format in ["pdf", "both"]:
-            pdf_filename = f"{os.path.splitext(filename)[0]}_translated_{task_id}.pdf"
-            pdf_path = os.path.join(os.path.dirname(output_path), pdf_filename)
+            base_filename = os.path.splitext(os.path.basename(filename))[0]
+            pdf_filename = f"{base_filename}_translated_{task_id}.pdf"
+            pdf_path = os.path.join(output_dir, pdf_filename)
+            
             create_translated_pdf('\n'.join(translated_text), pdf_path, lang_settings["lang"])
-            progress_dict[task_id]['pdf_file'] = pdf_path
-
+            print(f"PDF created at: {pdf_path}")  # Debug log
+            
+            # Update progress with both PDF path and status
+            update_progress(
+                task_id,
+                pdf_file=pdf_path,
+                status='completed' if not output_format == "both" else None,
+                progress=100 if not output_format == "both" else None
+            )
+            
         # Handle audio output
         if audio_chunks and output_format in ["audio", "both"]:
             concatenate_audio_files(audio_chunks, output_path)
+            print(f"Audio created at: {output_path}")  # Debug log
+            
+            # Update progress with both audio path and status
+            update_progress(
+                task_id,
+                audio_file=output_path,
+                status='completed',
+                progress=100
+            )
             
             # Clean up temporary files
             for chunk in audio_chunks:
@@ -182,4 +213,5 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, progr
                     os.remove(chunk)
 
     except Exception as e:
+        update_progress(task_id, status='error', error=str(e), progress=0)
         raise Exception(f"Error processing PDF: {str(e)}") 

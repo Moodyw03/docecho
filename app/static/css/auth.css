@@ -1,3 +1,13 @@
+:root {
+    --primary-color: #10a37f;
+    --primary-hover: #0d8d6f;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f7f7f8;
+    --text-color: #2d333a;
+    --text-secondary: #6e7681;
+    --border-color: #e5e5e5;
+}
+
 body {
     font-family: 'Poppins', sans-serif;
     margin: 0;
@@ -123,4 +133,33 @@ header {
     margin-bottom: 1.5rem;
     color: #ff3b30;
     font-size: 0.9rem;
+}
+
+/* Override any conflicting styles from main.css */
+footer {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    padding: 1.2rem;
+    text-align: center;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+    z-index: 5;
+}
+
+footer p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+    margin: 0 0.5rem;
+    transition: color 0.3s ease;
+}
+
+footer a:hover {
+    color: var(--primary-hover);
 } 
