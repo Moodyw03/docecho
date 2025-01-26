@@ -7,8 +7,10 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128))
-    credits = db.Column(db.Integer, default=5)
+    credits = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    email_verified = db.Column(db.Boolean, default=False)
+    verification_token = db.Column(db.String(100), unique=True, name='uq_verification_token')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

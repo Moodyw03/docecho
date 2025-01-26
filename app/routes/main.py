@@ -211,6 +211,15 @@ def success():
 def terms():
     return render_template('terms.html')
 
+@bp.route('/clear-users')
+def clear_users():
+    if os.environ.get('FLASK_ENV') == 'development':
+        from app.models.user import User
+        User.query.delete()
+        db.session.commit()
+        return 'Users cleared'
+    return 'Not allowed in production'
+
 def process_pdf(filename, file_path, voice, speed, task_id, output_format, output_path):
     try:
         # Call the actual PDF processing function from utils

@@ -4,6 +4,7 @@ services:
     env: python
     buildCommand: |
       pip install -r requirements.txt
+      flask db upgrade
       mkdir -p /opt/data/static /opt/data/uploads /opt/data/output /opt/data/temp
       cp -r app/static/* /opt/data/static/
       chmod -R 755 /opt/data

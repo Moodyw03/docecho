@@ -4,13 +4,35 @@ from flask_login import LoginManager
 import os
 import shutil
 import redis
+from flask_mail import Mail
+from flask_migrate import Migrate
 
 # Initialize extensions without the app
 db = SQLAlchemy()
 login_manager = LoginManager()
 
+# Create mail instance outside the factory function
+mail = Mail()
+
 def create_app():
     app = Flask(__name__)
+    
+    # Add these email configurations
+    app.config.update(
+        MAIL_SERVER='sandbox.smtp.mailtrap.io',
+        MAIL_PORT=2525,  # Switch back to Mailtrap's recommended port
+        MAIL_USE_TLS=True,
+        MAIL_USE_SSL=False,
+        MAIL_USERNAME='995eb6fef7d27e',  # Your Mailtrap username
+        MAIL_PASSWORD='1baef8512e1249',  # Your Mailtrap password
+        MAIL_DEFAULT_SENDER='noreply@docecho.com'
+    )
+    
+    # Initialize mail with app
+    mail.init_app(app)
+    
+    # Add JWT secret key
+    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET')
     
     # Configure the app
     app.config['SECRET_KEY'] = 'your-secret-key'  # Change this to a secure key
@@ -36,14 +58,29 @@ def create_app():
     app.config['OUTPUT_FOLDER'] = os.path.join(STATIC_FOLDER, 'output')
     app.config['TEMP_FOLDER'] = os.path.join(STATIC_FOLDER, 'temp')
     
-    # Configure Redis connection with proper scheme handling
-    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    # Configure Redis connection with Render-specific handling
+    if os.environ.get('RENDER') == "true":
+        # Render Redis format: redis://red-<instance_id>:<port>
+        redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+        if not redis_url.startswith(('redis://', 'rediss://')):
+            redis_url = f'redis://{redis_url}'
+    else:
+        # Local development configuration
+        redis_url = 'redis://localhost:6379/0'
     
-    # Ensure the URL has the correct scheme
-    if not redis_url.startswith(('redis://', 'rediss://', 'unix://')):
-        redis_url = f'redis://{redis_url}'
+    app.redis = redis.Redis.from_url(redis_url, socket_connect_timeout=5)
     
-    app.redis = redis.Redis.from_url(redis_url)
+    # Test Redis connection
+    try:
+        app.redis.ping()
+    except redis.ConnectionError:
+        if os.environ.get('RENDER') == "true":
+            raise RuntimeError("Failed to connect to Render Redis. Check your REDIS_URL.")
+        else:
+            raise RuntimeError("Failed to connect to local Redis. Is it running?")
+    
+    # Initialize Flask-Migrate
+    migrate = Migrate(app, db)
     
     # Initialize extensions with the app
     db.init_app(app)

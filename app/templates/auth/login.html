@@ -13,6 +13,9 @@
             {% if messages %}
                 <div class="flash-messages">
                     {{ messages[0] }}
+                    {% if 'verify your email' in messages[0] %}
+                        <p>Didn't receive the email? <a href="{{ url_for('auth.resend_verification') }}">Resend verification</a></p>
+                    {% endif %}
                 </div>
             {% endif %}
         {% endwith %}
