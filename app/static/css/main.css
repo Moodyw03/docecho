@@ -21,7 +21,7 @@ body {
 }
 
 footer {
-    padding: 0.8rem;
+    padding: 1.2rem;
     text-align: center;
     font-size: 0.8rem;
     color: var(--text-muted);
@@ -54,7 +54,7 @@ footer a:hover {
     max-width: 1200px;
     padding: 1rem;
     margin: 0 auto;
-    margin-bottom: 60px;
+    margin-bottom: 70px;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -164,4 +164,91 @@ header {
     margin-bottom: 1.5rem;
     color: #ff3b30;
     font-size: 0.9rem;
+}
+
+/* Pricing section styles */
+.pricing-container {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    padding: 2rem;
+    flex-wrap: wrap;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.pricing-box {
+    flex: 1;
+    min-width: 280px;
+    max-width: 350px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 2rem;
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.pricing-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.pricing-box h2 {
+    color: var(--primary-color);
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.pricing-box .price {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: var(--text-color);
+    margin-bottom: 1rem;
+}
+
+.pricing-box .credits {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+}
+
+.pricing-box .features {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 2rem;
+}
+
+.pricing-box .features li {
+    margin: 0.5rem 0;
+    color: var(--text-secondary);
+}
+
+.pricing-box button {
+    width: 100%;
+    padding: 1rem;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.pricing-box button:hover {
+    background-color: var(--primary-hover);
+}
+
+/* Make pricing boxes responsive */
+@media (max-width: 768px) {
+    .pricing-container {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .pricing-box {
+        width: 100%;
+        margin-bottom: 2rem;
+    }
 } 
