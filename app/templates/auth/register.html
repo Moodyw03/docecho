@@ -20,14 +20,14 @@
         <form method="POST">
             {{ form.csrf_token }}
             <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required>
+                {{ form.email.label }}
+                {{ form.email(class="form-control", required=true) }}
             </div>
             <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+                {{ form.password.label }}
+                {{ form.password(class="form-control", required=true) }}
             </div>
-            <button type="submit" class="btn">Create Account</button>
+            {{ form.submit(class="btn") }}
         </form>
         <div class="auth-links">
             Already have an account? <a href="{{ url_for('auth.login') }}">Login</a>

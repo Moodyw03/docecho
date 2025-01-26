@@ -13,11 +13,24 @@ def create_app():
     
     # Configure the app
     app.config['SECRET_KEY'] = 'your-secret-key'  # Change this to a secure key
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///docecho.db'
+    
+    # Configure database path
+    if os.environ.get('RENDER') == "true":
+        # Use persistent storage on Render
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////opt/data/docecho.db'
+    else:
+        # Use local path for development
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///docecho.db'
+    
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Set up static folders
-    STATIC_FOLDER = '/opt/data' if os.environ.get('RENDER') else 'static'
+    if os.environ.get('RENDER') == "true":
+        STATIC_FOLDER = '/opt/data/static'
+    else:
+        STATIC_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
+    
+    app.static_folder = STATIC_FOLDER
     app.config['UPLOAD_FOLDER'] = os.path.join(STATIC_FOLDER, 'uploads')
     app.config['OUTPUT_FOLDER'] = os.path.join(STATIC_FOLDER, 'output')
     app.config['TEMP_FOLDER'] = os.path.join(STATIC_FOLDER, 'temp')
@@ -48,29 +61,24 @@ def create_app():
         
         # Handle static files for Render environment
         if os.environ.get('RENDER') == "true":
-            render_static = '/opt/data/static'
-            os.makedirs(render_static, exist_ok=True)
+            # Create the base static directory
+            os.makedirs(STATIC_FOLDER, exist_ok=True)
             
-            # Copy static files to mounted disk
+            # Copy static files to mounted disk while preserving directory structure
             local_static = os.path.join(os.path.dirname(__file__), 'static')
             if os.path.exists(local_static):
-                for item in os.listdir(local_static):
-                    s = os.path.join(local_static, item)
-                    d = os.path.join(render_static, item)
-                    if os.path.isdir(s):
-                        shutil.copytree(s, d, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(s, d)
-                
-                app.static_folder = render_static
-        
-        # Ensure required directories exist
-        static_path = os.path.join(app.root_path, 'static')
-        upload_path = os.path.join(static_path, 'uploads')
-        output_path = os.path.join(static_path, 'output')
-        temp_path = os.path.join(static_path, 'temp')
-        
-        for path in [static_path, upload_path, output_path, temp_path]:
-            os.makedirs(path, exist_ok=True)
+                for root, dirs, files in os.walk(local_static):
+                    for file in files:
+                        # Get the relative path from local_static
+                        rel_path = os.path.relpath(root, local_static)
+                        # Create source and destination paths
+                        src_file = os.path.join(root, file)
+                        dst_dir = os.path.join(STATIC_FOLDER, rel_path)
+                        dst_file = os.path.join(dst_dir, file)
+                        
+                        # Create destination directory if it doesn't exist
+                        os.makedirs(dst_dir, exist_ok=True)
+                        # Copy the file
+                        shutil.copy2(src_file, dst_file)
     
     return app 

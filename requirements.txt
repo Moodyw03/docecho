@@ -11,4 +11,6 @@ stripe==6.1.0
 python-dotenv==1.0.0
 gunicorn==21.2.0
 SQLAlchemy==2.0.23
+Flask-WTF==1.1.1
+email-validator==2.0.0
 
