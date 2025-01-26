@@ -110,22 +110,26 @@ def download(task_id):
         task_info = progress_dict[task_id]
         
         if task_info.get('status') != 'completed':
-            return jsonify({"error": "Audio file not ready"}), 400
+            return jsonify({"error": "Files not ready"}), 400
             
-        if 'audio_file' not in task_info:
-            return jsonify({"error": "Audio file not found"}), 404
-            
-        audio_file = task_info['audio_file']
+        file_type = request.args.get('type', 'audio')  # Default to audio if not specified
         
-        if not os.path.exists(audio_file):
+        if file_type == 'audio' and 'audio_file' not in task_info:
             return jsonify({"error": "Audio file not found"}), 404
+        elif file_type == 'pdf' and 'pdf_file' not in task_info:
+            return jsonify({"error": "PDF file not found"}), 404
+            
+        file_path = task_info['audio_file'] if file_type == 'audio' else task_info['pdf_file']
+        
+        if not os.path.exists(file_path):
+            return jsonify({"error": f"{file_type.upper()} file not found"}), 404
             
         # Get just the filename from the full path
-        filename = os.path.basename(audio_file)
+        filename = os.path.basename(file_path)
         
         return send_file(
-            audio_file,
-            mimetype='audio/mpeg',
+            file_path,
+            mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf',
             as_attachment=True,
             download_name=filename
         )

@@ -165,8 +165,15 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, progr
                 except Exception as e:
                     continue
 
-        # Combine audio chunks into final output
-        if audio_chunks:
+        # Handle PDF output
+        if output_format in ["pdf", "both"]:
+            pdf_filename = f"{os.path.splitext(filename)[0]}_translated_{task_id}.pdf"
+            pdf_path = os.path.join(os.path.dirname(output_path), pdf_filename)
+            create_translated_pdf('\n'.join(translated_text), pdf_path, lang_settings["lang"])
+            progress_dict[task_id]['pdf_file'] = pdf_path
+
+        # Handle audio output
+        if audio_chunks and output_format in ["audio", "both"]:
             concatenate_audio_files(audio_chunks, output_path)
             
             # Clean up temporary files

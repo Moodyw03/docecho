@@ -571,7 +571,17 @@
                 statusMessage.textContent = data.status;
                 
                 if (data.status === 'completed') {
-                    window.location.href = `/download/${taskId}`;
+                    const outputFormat = document.getElementById("output_format").value;
+                    if (outputFormat === "both") {
+                        // Download both formats
+                        window.location.href = `/download/${taskId}?type=audio`;
+                        setTimeout(() => {
+                            window.location.href = `/download/${taskId}?type=pdf`;
+                        }, 1000);
+                    } else {
+                        // Download single format
+                        window.location.href = `/download/${taskId}?type=${outputFormat}`;
+                    }
                 } else if (data.status !== 'error') {
                     setTimeout(() => checkProgress(taskId), 2000);
                 }
