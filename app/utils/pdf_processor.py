@@ -184,28 +184,29 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
             pdf_path = os.path.join(output_dir, pdf_filename)
             
             create_translated_pdf('\n'.join(translated_text), pdf_path, lang_settings["lang"])
-            print(f"PDF created at: {pdf_path}")  # Debug log
             
-            # Update progress with both PDF path and status
+            # Update progress with PDF path
             update_progress(
                 task_id,
                 pdf_file=pdf_path,
-                status='completed' if not output_format == "both" else None,
-                progress=100 if not output_format == "both" else None
+                status='completed' if output_format == "pdf" else None,
+                progress=100 if output_format == "pdf" else None
             )
             
         # Handle audio output
         if audio_chunks and output_format in ["audio", "both"]:
             concatenate_audio_files(audio_chunks, output_path)
-            print(f"Audio created at: {output_path}")  # Debug log
             
-            # Update progress with both audio path and status
-            update_progress(
-                task_id,
-                audio_file=output_path,
-                status='completed',
-                progress=100
-            )
+            # Update progress with both files if both formats
+            update_data = {
+                'audio_file': output_path,
+                'status': 'completed',
+                'progress': 100
+            }
+            if output_format == "both":
+                update_data['pdf_file'] = pdf_path
+                
+            update_progress(task_id, **update_data)
             
             # Clean up temporary files
             for chunk in audio_chunks:

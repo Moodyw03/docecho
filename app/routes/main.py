@@ -65,7 +65,10 @@ def process_file():
             output_format = request.form.get("output_format", "audio")
             speed = float(request.form.get("speed", "1.0"))
             
-            required_credits = 2 if output_format == "audio" else 1
+            required_credits = 1  # Base for PDF
+            if output_format in ["audio", "both"]:
+                required_credits += 1  # Add 1 more for audio (2 total for audio, 3 for both)
+            
             if current_user.credits < required_credits:
                 return jsonify({"error": "Insufficient credits"}), 402
             
@@ -138,7 +141,6 @@ def download(task_id):
         # Get just the filename from the full path
         filename = os.path.basename(file_path)
         
-        # Don't delete progress data until file is successfully sent
         response = send_file(
             file_path,
             mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf',
@@ -146,10 +148,12 @@ def download(task_id):
             download_name=filename
         )
         
-        # Only delete progress after successful download
-        delete_progress(task_id)
-        current_app.logger.info(f"Successfully sent {file_type} file for task {task_id}")
+        # Only delete progress if both files have been downloaded
+        if request.args.get('final') == 'true':
+            delete_progress(task_id)
+            current_app.logger.info(f"Cleaned up progress data for task {task_id}")
         
+        current_app.logger.info(f"Successfully sent {file_type} file for task {task_id}")
         return response
         
     except Exception as e:
