@@ -545,37 +545,44 @@
     });
 
     function checkProgress(taskId) {
-        fetch("/progress/" + taskId)
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById("statusMessage").textContent = data.status;
-            document.getElementById("progressBarFill").style.width = data.progress + "%";
-            
-            if (data.status === "Completed") {
-                document.getElementById("progressBarFill").style.width = "100%";
-                const outputFormat = document.getElementById("output_format").value;
-                
-                if (outputFormat === "both") {
-                    document.getElementById("statusMessage").textContent = "Processing completed. Downloading files...";
-                    // Download both formats
-                    window.location.href = "/download/" + taskId + "?format=audio";
-                    setTimeout(() => {
-                        window.location.href = "/download/" + taskId + "?format=pdf";
-                    }, 1000);
-                } else {
-                    document.getElementById("statusMessage").textContent = "Processing completed. Downloading file...";
-                    window.location.href = "/download/" + taskId + "?format=" + outputFormat;
+        fetch(`/progress/${taskId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Progress check failed');
                 }
-            } else if (data.status === "Error") {
-                document.getElementById("statusMessage").textContent = "Error: " + data.error;
-            } else {
-                setTimeout(() => checkProgress(taskId), 2000);
-            }
-        })
-        .catch(error => {
-            document.getElementById("statusMessage").textContent = "Error checking progress: " + error.message;
-            console.error("Error:", error);
-        });
+                return response.json();
+            })
+            .then(data => {
+                const progressContainer = document.getElementById("progressContainer");
+                const statusMessage = document.getElementById("statusMessage");
+                const progressBarFill = document.getElementById("progressBarFill");
+                
+                if (!progressContainer || !statusMessage || !progressBarFill) {
+                    console.error("Progress elements not found");
+                    return;
+                }
+                
+                if (data.error) {
+                    statusMessage.textContent = `Error: ${data.error}`;
+                    return;
+                }
+                
+                progressBarFill.style.width = `${data.progress}%`;
+                statusMessage.textContent = data.status;
+                
+                if (data.status === 'completed') {
+                    window.location.href = `/download/${taskId}`;
+                } else if (data.status !== 'error') {
+                    setTimeout(() => checkProgress(taskId), 2000);
+                }
+            })
+            .catch(error => {
+                console.error('Error checking progress:', error);
+                const statusMessage = document.getElementById("statusMessage");
+                if (statusMessage) {
+                    statusMessage.textContent = "Error checking progress. Please try again.";
+                }
+            });
     }
 
     // Call updateButtonText on page load
@@ -583,29 +590,43 @@
 
     // Add this function to handle language-based restrictions
     function updateOutputOptions() {
-        const selectedVoice = document.getElementById("voice").value;
+        const voiceSelect = document.getElementById("voice");
         const outputFormat = document.getElementById("output_format");
+        const formatNote = document.getElementById("formatNote");
+        
+        // Only proceed if we're on a page with these elements
+        if (!voiceSelect || !outputFormat) {
+            return;
+        }
+        
+        const selectedVoice = voiceSelect.value;
         const asianLanguages = ['ja', 'zh-CN'];
         
         if (asianLanguages.includes(selectedVoice)) {
-            // For Japanese and Chinese, restrict to audio only
             outputFormat.value = 'audio';
             outputFormat.disabled = true;
-            // Add a note about the restriction
-            document.getElementById("formatNote").style.display = "block";
+            if (formatNote) {
+                formatNote.style.display = "block";
+            }
         } else {
-            // For other languages, enable all options
             outputFormat.disabled = false;
-            document.getElementById("formatNote").style.display = "none";
+            if (formatNote) {
+                formatNote.style.display = "none";
+            }
         }
         
-        updateButtonText();
+        if (typeof updateButtonText === 'function') {
+            updateButtonText();
+        }
     }
 
-    // Add this after your existing voice select element
-    document.getElementById("voice").addEventListener("change", updateOutputOptions);
-
-    // Call on page load
-    document.addEventListener("DOMContentLoaded", updateOutputOptions);
+    // Only add event listeners if elements exist
+    document.addEventListener("DOMContentLoaded", function() {
+        const voiceSelect = document.getElementById("voice");
+        if (voiceSelect) {
+            voiceSelect.addEventListener("change", updateOutputOptions);
+            updateOutputOptions();
+        }
+    });
   </script>
 {% endblock %}

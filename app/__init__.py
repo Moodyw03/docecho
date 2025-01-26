@@ -63,5 +63,14 @@ def create_app():
                         shutil.copy2(s, d)
                 
                 app.static_folder = render_static
+        
+        # Ensure required directories exist
+        static_path = os.path.join(app.root_path, 'static')
+        upload_path = os.path.join(static_path, 'uploads')
+        output_path = os.path.join(static_path, 'output')
+        temp_path = os.path.join(static_path, 'temp')
+        
+        for path in [static_path, upload_path, output_path, temp_path]:
+            os.makedirs(path, exist_ok=True)
     
     return app 

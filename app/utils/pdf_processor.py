@@ -119,15 +119,11 @@ def create_translated_pdf(text, output_path, language_code='en'):
     except Exception as e:
         raise Exception(f"Error creating PDF: {str(e)}")
 
-def process_pdf(filename, file_path, voice, speed, task_id, output_format, progress_dict):
+def process_pdf(filename, file_path, voice, speed, task_id, output_format, progress_dict, output_path):
     try:
-        if not os.path.exists('output'):
-            os.makedirs('output')
         if not os.path.exists('temp'):
             os.makedirs('temp')
 
-        progress_dict[task_id] = {'status': 'Processing', 'progress': 0}
-        
         progress_dict[task_id]['status'] = 'Extracting text from PDF...'
         text_chunks = extract_text_chunks_from_pdf(file_path)
         total_chunks = len(text_chunks)
@@ -169,35 +165,14 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, progr
                 except Exception as e:
                     continue
 
-            import gc
-            gc.collect()
-
-        if output_format in ["pdf", "both"]:
-            pdf_filename = filename.replace(".pdf", f"_translated_{task_id}.pdf")
-            pdf_path = os.path.join("output", pdf_filename)
-            create_translated_pdf('\n'.join(translated_text), pdf_path, lang_settings["lang"])
-            progress_dict[task_id]['pdf_file'] = pdf_path
-
-        if output_format in ["audio", "both"]:
-            if audio_chunks:
-                output_filename = filename.replace(".pdf", f"_{task_id}.mp3")
-                final_audio_file = os.path.join("output", output_filename)
-                concatenate_audio_files(audio_chunks, final_audio_file)
-                progress_dict[task_id]['audio_file'] = final_audio_file
-
-        for audio_file in audio_chunks:
-            try:
-                os.remove(audio_file)
-            except:
-                pass
-        try:
-            os.remove(file_path)
-        except:
-            pass
-
-        progress_dict[task_id]['progress'] = 100
-        progress_dict[task_id]['status'] = 'Completed'
+        # Combine audio chunks into final output
+        if audio_chunks:
+            concatenate_audio_files(audio_chunks, output_path)
+            
+            # Clean up temporary files
+            for chunk in audio_chunks:
+                if os.path.exists(chunk):
+                    os.remove(chunk)
 
     except Exception as e:
-        progress_dict[task_id]['status'] = 'Error'
-        progress_dict[task_id]['error'] = str(e) 
+        raise Exception(f"Error processing PDF: {str(e)}") 
