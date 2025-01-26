@@ -15,6 +15,14 @@ def create_app():
     app = Flask(__name__)
     load_dotenv()  # Ensure environment variables are loaded
     
+    # Set development mode
+    app.config['ENV'] = 'development'
+    os.environ['FLASK_ENV'] = 'development'
+    
+    # Configure SendGrid
+    app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
+    app.config['SENDGRID_API_KEY'] = os.getenv('SENDGRID_API_KEY')
+    
     # Add JWT secret key
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET')
     

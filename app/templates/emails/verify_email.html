@@ -1,12 +1,50 @@
-{% extends "base.html" %}
-
-{% block content %}
-<div class="container">
-    <div class="auth-container">
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
         <h2>Email Verification</h2>
         <p>Please click the button below to verify your email address:</p>
         <a href="{{ verification_url }}" class="btn">Verify Email</a>
-        <p class="auth-links">If you didn't create this account, you can safely ignore this email.</p>
+        <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+        <p style="word-break: break-all;">{{ verification_url }}</p>
+        <div class="footer">
+            <p>If you didn't create this account, you can safely ignore this email.</p>
+        </div>
     </div>
-</div>
-{% endblock %} 
+</body>
+</html> 

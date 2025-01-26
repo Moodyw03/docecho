@@ -35,23 +35,32 @@ def login():
 
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
+    print("\n=== Starting Registration Process ===")
     if current_user.is_authenticated:
+        print("User already authenticated, redirecting to index")
         return redirect(url_for('main.index'))
     
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
+            print("\nForm submitted and validated")
             email = form.email.data.strip().lower()  # Normalize email
+            print(f"Normalized email: {email}")
+            
             if User.query.filter(func.lower(User.email) == email).first():
+                print("Email already exists")
                 flash('Email address already exists', 'danger')
                 return redirect(url_for('auth.register'))
             
+            print("Creating new user...")
             new_user = User(email=form.email.data)
             new_user.set_password(form.password.data)
             
             db.session.add(new_user)
-            db.session.commit()  # First commit to get user ID
+            db.session.commit()
+            print(f"User created with ID: {new_user.id}")
             
+            print("Generating verification token...")
             token = jwt.encode(
                 {
                     'user_id': new_user.id,
@@ -59,19 +68,41 @@ def register():
                 },
                 current_app.config['JWT_SECRET_KEY'],
                 algorithm='HS256'
-            ).decode('utf-8')  # Generate token after commit
-            new_user.set_verification_token(token)
+            )
+            print("Token generated successfully")
             
-            send_verification_email(new_user)
-            flash('Registration successful! Check your email to verify.', 'success')
+            new_user.set_verification_token(token)
+            print("Token saved to user record")
+            
+            try:
+                print("\nAttempting to send verification email...")
+                print(f"Using sender email: {current_app.config.get('MAIL_DEFAULT_SENDER')}")
+                print(f"SendGrid API key present: {bool(current_app.config.get('SENDGRID_API_KEY'))}")
+                
+                send_verification_email(new_user)
+                print("Verification email sent successfully")
+                flash('Registration successful! Check your email to verify.', 'success')
+            except Exception as email_error:
+                print(f"\nFailed to send verification email: {str(email_error)}")
+                if hasattr(email_error, 'body'):
+                    print(f"SendGrid error details: {email_error.body}")
+                flash('Account created but failed to send verification email. Please contact support.', 'warning')
+            
+            print("=== Registration Process Complete ===\n")
             return redirect(url_for('auth.login'))
             
         except Exception as e:
             db.session.rollback()
+            print(f"\nRegistration error: {str(e)}")
+            if hasattr(e, 'body'):
+                print(f"Error details: {e.body}")
             current_app.logger.error(f'Registration error: {str(e)}', exc_info=True)
             flash(f'Registration failed: {str(e)}', 'danger')
+    else:
+        if form.errors:
+            print(f"\nForm validation errors: {form.errors}")
     
-    # Show form with errors
+    print("=== End Registration Process ===\n")
     return render_template('auth/register.html', form=form)
 
 @bp.route('/logout')
@@ -108,6 +139,9 @@ def verify_email(token):
 
 def send_verification_email(user):
     try:
+        print("\n=== Starting verification email process ===")
+        print(f"Sending to user: {user.email}")
+        
         # Ensure proper token encoding
         token = jwt.encode(
             {
@@ -116,40 +150,69 @@ def send_verification_email(user):
             },
             current_app.config['JWT_SECRET_KEY'],
             algorithm='HS256'
-        ).decode('utf-8')  # Add decode for Flask-JWT compatibility
+        )
+        print("Token generated successfully")
         
-        verification_url = url_for('auth.verify_email', token=token, _external=True)
+        # Generate verification URL using request.host_url
+        verification_url = request.host_url.rstrip('/') + url_for('auth.verify_email', token=token)
+        print(f"Generated verification URL: {verification_url}")
         
-        # Add debug logging
-        current_app.logger.debug(f"Verification URL: {verification_url}")
-        current_app.logger.debug(f"Sending to: {user.email}")
+        # Try rendering the template first to catch any template errors
+        try:
+            html_content = render_template(
+                'emails/verify_email.html',
+                verification_url=verification_url
+            )
+            print("Email template rendered successfully")
+            print(f"Template content preview: {html_content[:200]}...")
+        except Exception as template_error:
+            print(f"Template rendering error: {str(template_error)}")
+            raise ValueError(f"Failed to render email template: {str(template_error)}")
         
+        if not current_app.config.get('MAIL_DEFAULT_SENDER'):
+            print("Error: MAIL_DEFAULT_SENDER not configured!")
+            raise ValueError("Missing sender email configuration")
+            
         # Create SendGrid mail object
         message = Mail(
             from_email=current_app.config['MAIL_DEFAULT_SENDER'],
             to_emails=user.email,
             subject='Verify Your Email Address',
-            html_content=render_template(
-                'emails/verify_email.html',
-                verification_url=verification_url
-            ))
+            html_content=html_content
+        )
+        print("SendGrid message object created")
         
         # Send using SendGrid API
-        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        sendgrid_api_key = current_app.config.get('SENDGRID_API_KEY')
+        if not sendgrid_api_key:
+            print("Error: SENDGRID_API_KEY not configured!")
+            raise ValueError("Missing SendGrid API key configuration")
+            
+        print("Initializing SendGrid client...")
+        sg = SendGridAPIClient(sendgrid_api_key)
         
-        # Add verification
-        if not sg.client.api_key:
-            current_app.logger.error("NO SENDGRID API KEY FOUND!")
-            raise ValueError("Missing SendGrid API key")
-        
+        print("Attempting to send email...")
         response = sg.send(message)
         
-        current_app.logger.info(f"Email sent to {user.email} - Status: {response.status_code}")
+        if response.status_code not in [200, 201, 202]:
+            error_msg = f"SendGrid API error - Status: {response.status_code}"
+            print(error_msg)
+            if response.body:
+                print(f"Response body: {response.body.decode()}")
+            raise ValueError(f"Failed to send email - Status: {response.status_code}")
+            
+        print(f"Email sent successfully! Status: {response.status_code}")
+        print(f"Message ID: {response.headers.get('X-Message-Id', 'Not available')}")
+        print("=== End of verification email process ===\n")
         
+    except jwt.PyJWTError as e:
+        print(f"JWT error: {str(e)}")
+        raise ValueError("Failed to generate verification token")
     except Exception as e:
-        current_app.logger.error(f"Email error: {str(e)}")
+        print(f"Email error: {str(e)}")
         if hasattr(e, 'body'):
-            current_app.logger.error(f"SendGrid error details: {e.body}")
+            print(f"SendGrid error details: {e.body}")
+        raise
 
 @bp.route('/resend-verification')
 @login_required
@@ -168,17 +231,31 @@ def resend_verification():
 @bp.route('/test-sendgrid')
 def test_sendgrid():
     try:
+        if not current_app.config.get('MAIL_DEFAULT_SENDER'):
+            return "Error: MAIL_DEFAULT_SENDER not configured", 500
+            
         message = Mail(
             from_email=current_app.config['MAIL_DEFAULT_SENDER'],
-            to_emails='gabbipereira03@gmail.com',
+            to_emails=current_app.config['MAIL_DEFAULT_SENDER'],  # Send to the same address
             subject='SendGrid Test',
             html_content='<strong>This is a test from Flask</strong>')
         
-        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        sendgrid_api_key = current_app.config.get('SENDGRID_API_KEY')
+        if not sendgrid_api_key:
+            return "Error: SENDGRID_API_KEY not configured", 500
+            
+        sg = SendGridAPIClient(sendgrid_api_key)
         response = sg.send(message)
-        return f"Email sent! Status: {response.status_code}"
+        
+        if response.status_code not in [200, 201, 202]:
+            return f"Error: Failed to send email - Status: {response.status_code}", 500
+            
+        return f"Email sent successfully! Status: {response.status_code}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        current_app.logger.error(f"Test email error: {str(e)}")
+        if hasattr(e, 'body'):
+            current_app.logger.error(f"SendGrid error details: {e.body}")
+        return f"Error: {str(e)}", 500
 
 @bp.route('/debug-verify/<email>')
 def debug_verify(email):
@@ -187,3 +264,74 @@ def debug_verify(email):
         send_verification_email(user)
         return f"Verification email re-sent to {email}"
     return "User not found"
+
+@bp.route('/debug-email')
+def debug_email():
+    try:
+        # Print configuration
+        print(f"MAIL_DEFAULT_SENDER: {current_app.config.get('MAIL_DEFAULT_SENDER')}")
+        print(f"SENDGRID_API_KEY present: {bool(current_app.config.get('SENDGRID_API_KEY'))}")
+        
+        if not current_app.config.get('MAIL_DEFAULT_SENDER'):
+            print("Error: MAIL_DEFAULT_SENDER not configured")
+            return "Error: MAIL_DEFAULT_SENDER not configured", 500
+            
+        # Create test message
+        message = Mail(
+            from_email=current_app.config['MAIL_DEFAULT_SENDER'],
+            to_emails=current_app.config['MAIL_DEFAULT_SENDER'],
+            subject='Debug Test Email',
+            html_content='<strong>This is a debug test from Flask</strong>'
+        )
+        
+        print("Message created successfully")
+        
+        # Log SendGrid setup
+        sendgrid_api_key = current_app.config.get('SENDGRID_API_KEY')
+        if not sendgrid_api_key:
+            print("Error: SENDGRID_API_KEY not configured")
+            return "Error: SENDGRID_API_KEY not configured", 500
+            
+        print("Initializing SendGrid client...")
+        sg = SendGridAPIClient(sendgrid_api_key)
+        
+        print("Sending email...")
+        response = sg.send(message)
+        
+        result = {
+            'status_code': response.status_code,
+            'body': response.body.decode() if response.body else None,
+            'headers': dict(response.headers) if response.headers else None
+        }
+        
+        print(f"SendGrid Response: {result}")
+        
+        if response.status_code not in [200, 201, 202]:
+            error_msg = f"Error: Failed to send email - {result}"
+            print(error_msg)
+            return error_msg, 500
+            
+        success_msg = f"Email sent successfully! Details: {result}"
+        print(success_msg)
+        return success_msg
+        
+    except Exception as e:
+        error_msg = f"Debug email error: {str(e)}"
+        print(error_msg)
+        if hasattr(e, 'body'):
+            print(f"SendGrid error details: {e.body}")
+        return f"Error: {str(e)}", 500
+
+@bp.route('/dev/clear-users')
+def dev_clear_users():
+    if current_app.config['ENV'] != 'development':
+        return "Not allowed in production", 403
+        
+    try:
+        num_users = User.query.count()
+        User.query.delete()
+        db.session.commit()
+        return f"Cleared {num_users} users from database"
+    except Exception as e:
+        db.session.rollback()
+        return f"Error clearing users: {str(e)}", 500
