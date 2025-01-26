@@ -1,11 +1,11 @@
 from flask import Blueprint, render_template, request, jsonify, send_file, url_for, redirect, flash
 from flask_login import login_required, current_user
+from app.models.user import User
+from app import db
 import os
 import uuid
 import threading
 from app.utils.pdf_processor import process_pdf
-from app.models.user import User
-from app import db
 import stripe
 
 bp = Blueprint('main', __name__)
