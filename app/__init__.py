@@ -36,8 +36,13 @@ def create_app():
     app.config['OUTPUT_FOLDER'] = os.path.join(STATIC_FOLDER, 'output')
     app.config['TEMP_FOLDER'] = os.path.join(STATIC_FOLDER, 'temp')
     
-    # Configure Redis connection
+    # Configure Redis connection with proper scheme handling
     redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    
+    # Ensure the URL has the correct scheme
+    if not redis_url.startswith(('redis://', 'rediss://', 'unix://')):
+        redis_url = f'redis://{redis_url}'
+    
     app.redis = redis.Redis.from_url(redis_url)
     
     # Initialize extensions with the app
