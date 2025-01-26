@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
 import shutil
+import redis
 
 # Initialize extensions without the app
 db = SQLAlchemy()
@@ -34,6 +35,10 @@ def create_app():
     app.config['UPLOAD_FOLDER'] = os.path.join(STATIC_FOLDER, 'uploads')
     app.config['OUTPUT_FOLDER'] = os.path.join(STATIC_FOLDER, 'output')
     app.config['TEMP_FOLDER'] = os.path.join(STATIC_FOLDER, 'temp')
+    
+    # Configure Redis connection
+    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    app.redis = redis.Redis.from_url(redis_url)
     
     # Initialize extensions with the app
     db.init_app(app)
