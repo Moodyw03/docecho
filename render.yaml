@@ -5,9 +5,9 @@ services:
     buildCommand: |
       python -m pip install --upgrade pip setuptools wheel
       pip install -r requirements.txt --no-cache-dir
+    startCommand: |
       mkdir -p /opt/data/static /opt/data/uploads /opt/data/output /opt/data/temp
       chmod -R 755 /opt/data
-    startCommand: |
       gunicorn wsgi:app --timeout 120 --workers 2 --threads 2
     envVars:
       - key: FLASK_ENV

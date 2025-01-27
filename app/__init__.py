@@ -107,9 +107,12 @@ def create_app():
         app.register_blueprint(main_bp)
         
         # Create necessary directories
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
-        os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
+        try:
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+            os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
+        except PermissionError as e:
+            raise RuntimeError(f"Permission denied creating directories: {e}") from e
         
         # Handle static files for Render environment
         if os.environ.get('RENDER') == "true":
