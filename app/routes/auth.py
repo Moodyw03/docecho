@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models.user import User
 from app.forms import RegistrationForm, LoginForm
@@ -79,9 +79,52 @@ def register():
                 print(f"Using sender email: {current_app.config.get('MAIL_DEFAULT_SENDER')}")
                 print(f"SendGrid API key present: {bool(current_app.config.get('SENDGRID_API_KEY'))}")
                 
-                send_verification_email(new_user)
-                print("Verification email sent successfully")
-                flash('Registration successful! Check your email to verify.', 'success')
+                # Generate verification token
+                token = new_user.set_verification_token(token)
+                
+                # Create verification URL
+                verification_url = url_for('auth.verify_email', 
+                                         token=token, 
+                                         _external=True)
+                
+                # Prepare email
+                message = Mail(
+                    from_email=current_app.config['MAIL_DEFAULT_SENDER'],
+                    to_emails=email,
+                    subject='Verify your DocEcho account',
+                    html_content=f'''
+                        <h1>Welcome to DocEcho!</h1>
+                        <p>Please click the link below to verify your email address:</p>
+                        <p><a href="{verification_url}">Verify Email</a></p>
+                        <p>If you did not create this account, please ignore this email.</p>
+                    '''
+                )
+
+                print(f"\nFull email details:")
+                print(f"From: {message.from_email}")
+                print(f"To: {message.to_emails}")
+                print(f"Subject: {message.subject}")
+                print(f"Body: {message.html_content}\n")
+
+                try:
+                    print("\nAttempting to send verification email...")
+                    sg = SendGridAPIClient(current_app.config['SENDGRID_API_KEY'])
+                    response = sg.send(message)
+                    print(f"Email sent! Status code: {response.status_code}")
+                    print(f"Response body: {response.body}")
+                    print(f"Response headers: {response.headers}")
+                except Exception as e:
+                    print(f"Error sending email: {str(e)}")
+                    if hasattr(e, 'body'):
+                        print(f"Error details: {e.body}")
+                    raise
+
+                print("Check SendGrid Activity Feed:")
+                print("https://app.sendgrid.com/email_activity")
+
+                flash('Please check your email to verify your account.', 'info')
+                return redirect(url_for('auth.login'))
+
             except Exception as email_error:
                 print(f"\nFailed to send verification email: {str(email_error)}")
                 if hasattr(email_error, 'body'):
@@ -215,16 +258,46 @@ def send_verification_email(user):
         raise
 
 @bp.route('/resend-verification')
-@login_required
 def resend_verification():
-    if current_user.email_verified:
-        return redirect(url_for('main.index'))
+    if not session.get('unverified_email'):
+        flash('No email to verify', 'error')
+        return redirect(url_for('auth.login'))
     
+    email = session['unverified_email']
+    user = User.query.filter_by(email=email).first()
+    
+    if not user:
+        flash('User not found', 'error')
+        return redirect(url_for('auth.login'))
+    
+    # Generate new verification token
+    token = user.set_verification_token()
+    
+    # Create verification URL
+    verification_url = url_for('auth.verify_email', 
+                             token=token, 
+                             _external=True)
+    
+    # Prepare email
+    message = Mail(
+        from_email=current_app.config['MAIL_DEFAULT_SENDER'],
+        to_emails=email,
+        subject='Verify your DocEcho account',
+        html_content=f'''
+            <h1>Welcome to DocEcho!</h1>
+            <p>Please click the link below to verify your email address:</p>
+            <p><a href="{verification_url}">Verify Email</a></p>
+            <p>If you did not create this account, please ignore this email.</p>
+        '''
+    )
+
     try:
-        send_verification_email(current_user)
-        flash('New verification email sent', 'success')
+        sg = SendGridAPIClient(current_app.config['SENDGRID_API_KEY'])
+        response = sg.send(message)
+        flash('Verification email sent! Please check your inbox.', 'success')
     except Exception as e:
-        flash('Failed to resend verification email', 'danger')
+        current_app.logger.error(f'Error sending verification email: {str(e)}')
+        flash('Error sending verification email. Please try again.', 'error')
     
     return redirect(url_for('auth.login'))
 

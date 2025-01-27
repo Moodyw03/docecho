@@ -1,0 +1,7 @@
+# Full cleanup sequence
+psql postgres -c "DROP DATABASE IF EXISTS docecho;"
+psql postgres -c "CREATE DATABASE docecho;"
+rm -rf migrations/
+flask db init
+flask db migrate -m "initial_schema"
+flask db upgrade 

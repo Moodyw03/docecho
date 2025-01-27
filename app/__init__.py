@@ -29,14 +29,22 @@ def create_app():
     # Configure the app
     app.config['SECRET_KEY'] = 'your-secret-key'  # Change this to a secure key
     
-    # Configure database path
-    if os.environ.get('RENDER') == "true":
-        # Use persistent storage on Render
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////opt/data/docecho.db'
-    else:
-        # Use local path for development
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///docecho.db'
+    # Get the database URL from environment variable
+    database_url = os.getenv('DATABASE_URL')
     
+    # Handle Render's Postgres URL format if present
+    if database_url and database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # Set default SQLite URL if no database URL is provided
+    if not database_url:
+        database_url = 'sqlite:///instance/app.db'
+        # Ensure the directory exists for SQLite
+        if database_url.startswith('sqlite:///'):
+            db_path = database_url.replace('sqlite:///', '')
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Set up static folders
@@ -79,8 +87,8 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     
+    # Import models after db initialization
     with app.app_context():
-        # Import models
         from app.models.user import User
         
         # Create database tables
