@@ -55,9 +55,11 @@ def create_app():
         STATIC_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
     
     app.static_folder = STATIC_FOLDER
-    app.config['UPLOAD_FOLDER'] = os.path.join(STATIC_FOLDER, 'uploads')
-    app.config['OUTPUT_FOLDER'] = os.path.join(STATIC_FOLDER, 'output')
-    app.config['TEMP_FOLDER'] = os.path.join(STATIC_FOLDER, 'temp')
+    app.config.update(
+        UPLOAD_FOLDER='/opt/data/uploads',
+        OUTPUT_FOLDER='/opt/data/output',
+        TEMP_FOLDER='/opt/data/temp'
+    )
     
     # Configure Redis connection with Render-specific handling
     if os.environ.get('RENDER') == "true":
@@ -121,15 +123,5 @@ def create_app():
             if not request.is_secure:
                 url = request.url.replace('http://', 'https://', 1)
                 return redirect(url, code=301)
-    
-    # Create directories at app creation time
-    with app.app_context():
-        try:
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
-            os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
-        except Exception as e:
-            app.logger.error(f"Directory creation error: {str(e)}")
-            raise RuntimeError(f"Critical directory creation failed: {str(e)}") from e
     
     return app 
