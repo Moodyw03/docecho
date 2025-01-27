@@ -134,4 +134,12 @@ def create_app():
                         # Copy the file
                         shutil.copy2(src_file, dst_file)
     
+    # Add this to force HTTPS in production
+    @app.before_request
+    def enforce_https():
+        if os.environ.get('FLASK_ENV') == 'production':
+            if not request.is_secure:
+                url = request.url.replace('http://', 'https://', 1)
+                return redirect(url, code=301)
+    
     return app 

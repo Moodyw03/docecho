@@ -147,8 +147,8 @@ def send_verification_email(user):
         verification_url = url_for(
             'auth.verify_email', 
             token=token, 
-            _external=True, 
-            _scheme='https'  # Force HTTPS links
+            _external=True,
+            _scheme='http' if os.environ.get('FLASK_ENV') == 'development' else 'https'
         )
         print(f"Generated verification URL: {verification_url}")
         
@@ -232,10 +232,13 @@ def resend_verification():
     # Generate new verification token
     token = user.set_verification_token()
     
-    # Create verification URL
-    verification_url = url_for('auth.verify_email', 
-                             token=token, 
-                             _external=True)
+    # Create verification URL with token parameter
+    verification_url = url_for(
+        'auth.verify_email', 
+        token=token,  # Add token parameter here
+        _external=True,
+        _scheme='http' if os.environ.get('FLASK_ENV') == 'development' else 'https'
+    )
     
     # Prepare email
     message = Mail(
