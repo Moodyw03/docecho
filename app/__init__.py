@@ -15,10 +15,6 @@ def create_app():
     app = Flask(__name__)
     load_dotenv()  # Ensure environment variables are loaded
     
-    # Set development mode
-    app.config['ENV'] = 'development'
-    os.environ['FLASK_ENV'] = 'development'
-    
     # Configure SendGrid
     app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
     app.config['SENDGRID_API_KEY'] = os.getenv('SENDGRID_API_KEY')
@@ -106,14 +102,6 @@ def create_app():
         app.register_blueprint(auth_bp, url_prefix='/auth')
         app.register_blueprint(main_bp)
         
-        # Create necessary directories
-        try:
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
-            os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
-        except PermissionError as e:
-            raise RuntimeError(f"Permission denied creating directories: {e}") from e
-        
         # Handle static files for Render environment
         if os.environ.get('RENDER') == "true":
             # Create the base static directory
@@ -143,5 +131,15 @@ def create_app():
             if not request.is_secure:
                 url = request.url.replace('http://', 'https://', 1)
                 return redirect(url, code=301)
+    
+    # Create directories at app creation time
+    with app.app_context():
+        try:
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+            os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
+        except Exception as e:
+            app.logger.error(f"Directory creation error: {str(e)}")
+            raise RuntimeError(f"Critical directory creation failed: {str(e)}") from e
     
     return app 
