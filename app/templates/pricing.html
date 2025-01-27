@@ -157,7 +157,7 @@
 <div class="container">
     <header>
         <h1>Choose Your Plan</h1>
-        <p>Get started with the plan that works best for you</p>
+        <p class="subtitle">Get started with the plan that works best for you</p>
     </header>
     
     <div class="pricing-container">
@@ -165,6 +165,12 @@
         <div class="pricing-box">
             <h2>{{ package.credits }} Credits</h2>
             <div class="price">${{ package.price }}</div>
+            <ul class="features">
+                <li>1 credit per PDF page</li>
+                <li>2 credits per audio page</li>
+                <li>All languages supported</li>
+                <li>Credits never expire</li>
+            </ul>
             <form action="{{ url_for('main.create_checkout_session') }}" method="POST">
                 <input type="hidden" name="package_id" value="{{ package_id }}">
                 <button type="submit">Purchase Credits</button>
