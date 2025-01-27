@@ -17,7 +17,8 @@ language_map = {
     "de": {"lang": "de", "tld": "de"},
     "it": {"lang": "it", "tld": "it"},
     "zh-CN": {"lang": "zh-CN", "tld": "com"},
-    "ja": {"lang": "ja", "tld": "co.jp"}
+    "ja": {"lang": "ja", "tld": "co.jp"},
+    "ru": {"lang": "ru", "tld": "ru"}
 }
 
 def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=500):

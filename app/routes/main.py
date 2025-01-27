@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, send_file, url_for, redirect, flash, current_app
+from flask import Blueprint, render_template, request, jsonify, send_file, url_for, redirect, flash, current_app, abort
 from flask_login import login_required, current_user
 from app.models.user import User
 from app import db
@@ -165,46 +165,49 @@ def download(task_id):
 
 @bp.route('/pricing')
 def pricing():
-    return render_template('pricing.html', stripe_public_key=STRIPE_PUBLIC_KEY)
+    return render_template('pricing.html', 
+                          stripe_public_key=current_app.config['STRIPE_PUBLIC_KEY'],
+                          credit_packages=CREDIT_PACKAGES)
 
 @bp.route('/create-checkout-session', methods=['POST'])
+@login_required
 def create_checkout_session():
-    package = request.form.get('package')
-    if package not in CREDIT_PACKAGES:
-        return jsonify({'error': 'Invalid package'}), 400
-
+    package_id = request.form.get('package_id')
+    package = CREDIT_PACKAGES.get(package_id)
+    
+    if not package:
+        abort(400, "Invalid package selected")
+    
     try:
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': CREDIT_PACKAGES[package]['price'] * 100,
                     'product_data': {
-                        'name': f'{package.title()} Package',
-                        'description': f'{CREDIT_PACKAGES[package]["credits"]} credits',
+                        'name': f'{package["credits"]} Credits Package',
                     },
+                    'unit_amount': package['price'] * 100,
                 },
                 'quantity': 1,
             }],
             mode='payment',
-            success_url=url_for('main.success', package=package, _external=True),
+            success_url=url_for('main.payment_success', _external=True),
             cancel_url=url_for('main.pricing', _external=True),
-            client_reference_id=str(current_user.id),
+            metadata={
+                'user_id': current_user.id,
+                'credits': package['credits']
+            }
         )
-        return jsonify({'id': checkout_session.id})
+        return redirect(checkout_session.url, code=303)
     except Exception as e:
-        return jsonify({'error': str(e)}), 403
+        current_app.logger.error(f"Stripe error: {str(e)}")
+        return str(e), 400
 
-@bp.route('/success')
+@bp.route('/payment-success')
 @login_required
-def success():
-    package = request.args.get('package')
-    if package in CREDIT_PACKAGES:
-        user = User.query.get(current_user.id)
-        user.credits += CREDIT_PACKAGES[package]['credits']
-        db.session.commit()
-        flash('Payment successful! Credits have been added to your account.', 'success')
+def payment_success():
+    # Update user credits (you'll need to implement webhook verification for production)
     return redirect(url_for('main.index'))
 
 @bp.route('/terms')

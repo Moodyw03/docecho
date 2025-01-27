@@ -413,6 +413,7 @@
           <option value="it">Italian</option>
           <option value="zh-CN">Chinese (Mandarin)</option>
           <option value="ja">Japanese</option>
+          <option value="ru">Russian</option>
         </select>
       </div>
 
@@ -611,7 +612,7 @@
         }
         
         const selectedVoice = voiceSelect.value;
-        const asianLanguages = ['ja', 'zh-CN'];
+        const asianLanguages = ['ja', 'zh-CN', 'ru'];
         
         if (asianLanguages.includes(selectedVoice)) {
             outputFormat.value = 'audio';
