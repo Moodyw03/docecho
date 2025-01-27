@@ -32,17 +32,16 @@ def create_app():
     # Get the database URL from environment variable
     database_url = os.getenv('DATABASE_URL')
     
-    # Handle Render's Postgres URL format if present
-    if database_url and database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    
-    # Set default SQLite URL if no database URL is provided
     if not database_url:
+        if os.environ.get('RENDER') == "true":
+            raise ValueError("DATABASE_URL environment variable is required in production")
+        # Local development fallback
         database_url = 'sqlite:///instance/app.db'
-        # Ensure the directory exists for SQLite
-        if database_url.startswith('sqlite:///'):
-            db_path = database_url.replace('sqlite:///', '')
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        os.makedirs('instance', exist_ok=True)
+    
+    # Keep the postgres:// to postgresql:// replacement
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
     
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
