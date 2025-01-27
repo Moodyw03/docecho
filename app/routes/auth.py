@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from flask import current_app
 from werkzeug.security import generate_password_hash
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import Mail, Email, To
 import os
 from sqlalchemy import func
 
@@ -24,6 +24,7 @@ def login():
         user = User.query.filter_by(email=form.email.data).first()
         if user:
             if not user.email_verified:
+                session['unverified_email'] = user.email
                 flash('Please verify your email before logging in', 'warning')
                 return redirect(url_for('auth.login'))
             if user.check_password(form.password.data):
@@ -53,83 +54,29 @@ def register():
                 return redirect(url_for('auth.register'))
             
             print("Creating new user...")
-            new_user = User(email=form.email.data, credits=5)  # Set initial credits to 5
+            new_user = User(email=email, credits=5)  # Use normalized lowercase email
             new_user.set_password(form.password.data)
             
             db.session.add(new_user)
             db.session.commit()
             print(f"User created with ID: {new_user.id} and {new_user.credits} credits")
             
-            print("Generating verification token...")
-            token = jwt.encode(
-                {
-                    'user_id': new_user.id,
-                    'exp': datetime.utcnow() + timedelta(hours=24)
-                },
-                current_app.config['JWT_SECRET_KEY'],
-                algorithm='HS256'
-            )
-            print("Token generated successfully")
+            # Remove duplicate token generation
+            token = new_user.set_verification_token()  # Let the model handle token generation
             
-            new_user.set_verification_token(token)
-            print("Token saved to user record")
-            
+            # Simplify email sending flow
             try:
-                print("\nAttempting to send verification email...")
-                print(f"Using sender email: {current_app.config.get('MAIL_DEFAULT_SENDER')}")
-                print(f"SendGrid API key present: {bool(current_app.config.get('SENDGRID_API_KEY'))}")
-                
-                # Generate verification token
-                token = new_user.set_verification_token(token)
-                
-                # Create verification URL
-                verification_url = url_for('auth.verify_email', 
-                                         token=token, 
-                                         _external=True)
-                
-                # Prepare email
-                message = Mail(
-                    from_email=current_app.config['MAIL_DEFAULT_SENDER'],
-                    to_emails=email,
-                    subject='Verify your DocEcho account',
-                    html_content=f'''
-                        <h1>Welcome to DocEcho!</h1>
-                        <p>Please click the link below to verify your email address:</p>
-                        <p><a href="{verification_url}">Verify Email</a></p>
-                        <p>If you did not create this account, please ignore this email.</p>
-                    '''
-                )
-
-                print(f"\nFull email details:")
-                print(f"From: {message.from_email}")
-                print(f"To: {message.to_emails}")
-                print(f"Subject: {message.subject}")
-                print(f"Body: {message.html_content}\n")
-
-                try:
-                    print("\nAttempting to send verification email...")
-                    sg = SendGridAPIClient(current_app.config['SENDGRID_API_KEY'])
-                    response = sg.send(message)
-                    print(f"Email sent! Status code: {response.status_code}")
-                    print(f"Response body: {response.body}")
-                    print(f"Response headers: {response.headers}")
-                except Exception as e:
-                    print(f"Error sending email: {str(e)}")
-                    if hasattr(e, 'body'):
-                        print(f"Error details: {e.body}")
-                    raise
-
-                print("Check SendGrid Activity Feed:")
-                print("https://app.sendgrid.com/email_activity")
-
+                send_verification_email(new_user)
+                session['unverified_email'] = new_user.email
                 flash('Please check your email to verify your account.', 'info')
                 return redirect(url_for('auth.login'))
-
+                
             except Exception as email_error:
                 print(f"\nFailed to send verification email: {str(email_error)}")
-                if hasattr(email_error, 'body'):
-                    print(f"SendGrid error details: {email_error.body}")
-                flash('Account created but failed to send verification email. Please contact support.', 'warning')
+                # Clean up unverified user
+                db.session.delete(new_user)
+                db.session.commit()
+                flash('Account creation failed due to email error. Please try again.', 'danger')
             
             print("=== Registration Process Complete ===\n")
             return redirect(url_for('auth.login'))
@@ -197,7 +144,12 @@ def send_verification_email(user):
         print("Token generated successfully")
         
         # Generate verification URL using request.host_url
-        verification_url = request.host_url.rstrip('/') + url_for('auth.verify_email', token=token)
+        verification_url = url_for(
+            'auth.verify_email', 
+            token=token, 
+            _external=True, 
+            _scheme='https'  # Force HTTPS links
+        )
         print(f"Generated verification URL: {verification_url}")
         
         # Try rendering the template first to catch any template errors
@@ -218,8 +170,11 @@ def send_verification_email(user):
             
         # Create SendGrid mail object
         message = Mail(
-            from_email=current_app.config['MAIL_DEFAULT_SENDER'],
-            to_emails=user.email,
+            from_email=Email(
+                email="gabbipereira03@gmail.com",  # Verified email
+                name="DocEcho Team"  # Optional display name
+            ),
+            to_emails=[To(user.email)],
             subject='Verify Your Email Address',
             html_content=html_content
         )
@@ -237,7 +192,7 @@ def send_verification_email(user):
         print("Attempting to send email...")
         response = sg.send(message)
         
-        if response.status_code not in [200, 201, 202]:
+        if response.status_code not in [200, 202]:  # 202 is standard for async acceptance
             error_msg = f"SendGrid API error - Status: {response.status_code}"
             print(error_msg)
             if response.body:
@@ -247,6 +202,10 @@ def send_verification_email(user):
         print(f"Email sent successfully! Status: {response.status_code}")
         print(f"Message ID: {response.headers.get('X-Message-Id', 'Not available')}")
         print("=== End of verification email process ===\n")
+        
+        # Commit before sending email
+        db.session.commit()
+        print("Token committed to database")
         
     except jwt.PyJWTError as e:
         print(f"JWT error: {str(e)}")
@@ -259,11 +218,11 @@ def send_verification_email(user):
 
 @bp.route('/resend-verification')
 def resend_verification():
-    if not session.get('unverified_email'):
+    email = session.get('unverified_email')
+    if not email:
         flash('No email to verify', 'error')
         return redirect(url_for('auth.login'))
     
-    email = session['unverified_email']
     user = User.query.filter_by(email=email).first()
     
     if not user:
@@ -280,8 +239,8 @@ def resend_verification():
     
     # Prepare email
     message = Mail(
-        from_email=current_app.config['MAIL_DEFAULT_SENDER'],
-        to_emails=email,
+        from_email=Email(current_app.config['MAIL_DEFAULT_SENDER']),
+        to_emails=[To(user.email)],
         subject='Verify your DocEcho account',
         html_content=f'''
             <h1>Welcome to DocEcho!</h1>
@@ -294,7 +253,9 @@ def resend_verification():
     try:
         sg = SendGridAPIClient(current_app.config['SENDGRID_API_KEY'])
         response = sg.send(message)
-        flash('Verification email sent! Please check your inbox.', 'success')
+        if response.status_code in [200, 202]:
+            session.pop('unverified_email', None)
+            flash('Verification email sent! Please check your inbox.', 'success')
     except Exception as e:
         current_app.logger.error(f'Error sending verification email: {str(e)}')
         flash('Error sending verification email. Please try again.', 'error')
@@ -351,8 +312,8 @@ def debug_email():
             
         # Create test message
         message = Mail(
-            from_email=current_app.config['MAIL_DEFAULT_SENDER'],
-            to_emails=current_app.config['MAIL_DEFAULT_SENDER'],
+            from_email=Email(current_app.config['MAIL_DEFAULT_SENDER']),
+            to_emails=[To(current_app.config['MAIL_DEFAULT_SENDER'])],
             subject='Debug Test Email',
             html_content='<strong>This is a debug test from Flask</strong>'
         )
