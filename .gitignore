@@ -26,3 +26,4 @@ temp/
 .DS_Store
 Thumbs.dbsendgrid.env
 sendgrid.env
+.env

@@ -6,20 +6,23 @@ services:
       python -m pip install --upgrade pip
       pip install -r requirements.txt --no-cache-dir
       mkdir -p /opt/data/static /opt/data/uploads /opt/data/output /opt/data/temp
-      cp -r app/static/* /opt/data/static/
       chmod -R 755 /opt/data
-      python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.drop_all(); db.create_all()"
+      python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all()"
     startCommand: |
       gunicorn wsgi:app --timeout 120 --workers 2 --threads 2
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.9.12
       - key: FLASK_ENV
         value: production
-      - key: RENDER
-        value: "true"
-      - key: PIP_VERSION
-        value: "23.3.1"
+      - key: DATABASE_URL
+        value: your_render_postgres_url
+      - key: SENDGRID_API_KEY
+        value: your_sendgrid_api_key
+      - key: MAIL_DEFAULT_SENDER
+        value: "Gabbi Pereira <gabbipereira03@gmail.com>"
+      - key: JWT_SECRET
+        value: your_jwt_secret
+      - key: FLASK_SECRET_KEY
+        value: your_flask_secret_key
     disk:
       name: data
       mountPath: /opt/data
