@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request, redirect
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
@@ -120,7 +120,7 @@ def create_app():
     @app.before_request
     def enforce_https():
         if os.environ.get('FLASK_ENV') == 'production':
-            if not request.is_secure:
+            if not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
                 url = request.url.replace('http://', 'https://', 1)
                 return redirect(url, code=301)
     

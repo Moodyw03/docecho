@@ -3,7 +3,7 @@ services:
     name: docecho
     env: python
     buildCommand: |
-      python -m pip install --upgrade pip setuptools wheel
+      python -m pip install --upgrade pip==23.3.2 setuptools wheel
       pip install -r requirements.txt --no-cache-dir
     startCommand: |
       # Create directory structure with proper permissions
