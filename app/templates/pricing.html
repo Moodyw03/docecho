@@ -160,14 +160,14 @@
         <p>Get started with the plan that works best for you</p>
     </header>
     
-    <div class="pricing-grid">
+    <div class="pricing-container">
         {% for package_id, package in credit_packages.items() %}
-        <div class="pricing-card">
-            <h3>{{ package.credits }} Credits</h3>
+        <div class="pricing-box">
+            <h2>{{ package.credits }} Credits</h2>
             <div class="price">${{ package.price }}</div>
             <form action="{{ url_for('main.create_checkout_session') }}" method="POST">
                 <input type="hidden" name="package_id" value="{{ package_id }}">
-                <button type="submit" class="btn-primary">Purchase</button>
+                <button type="submit">Purchase Credits</button>
             </form>
         </div>
         {% endfor %}

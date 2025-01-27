@@ -165,9 +165,14 @@ def download(task_id):
 
 @bp.route('/pricing')
 def pricing():
-    return render_template('pricing.html', 
-                          stripe_public_key=current_app.config['STRIPE_PUBLIC_KEY'],
-                          credit_packages=CREDIT_PACKAGES)
+    try:
+        return render_template('pricing.html',
+            title='Pricing',
+            stripe_public_key=current_app.config.get('STRIPE_PUBLIC_KEY', ''),
+            credit_packages=CREDIT_PACKAGES)
+    except KeyError:
+        current_app.logger.error("Stripe public key not configured")
+        abort(500, "Payment system configuration error")
 
 @bp.route('/create-checkout-session', methods=['POST'])
 @login_required

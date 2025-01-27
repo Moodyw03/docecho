@@ -6,6 +6,7 @@ import shutil
 import redis
 from flask_migrate import Migrate
 from dotenv import load_dotenv
+from app.config import Config
 
 # Initialize extensions without the app
 db = SQLAlchemy()
@@ -15,15 +16,15 @@ def create_app():
     app = Flask(__name__)
     load_dotenv()  # Ensure environment variables are loaded
     
+    # Add this configuration section
+    app.config.from_object(Config)
+    
     # Configure SendGrid
     app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
     app.config['SENDGRID_API_KEY'] = os.getenv('SENDGRID_API_KEY')
     
-    # Add JWT secret key
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET')
-    
-    # Configure the app
-    app.config['SECRET_KEY'] = 'your-secret-key'  # Change this to a secure key
+    # Remove the duplicate secret key config and keep:
+    app.config.from_object(Config)
     
     # Get the database URL from environment variable
     database_url = os.getenv('DATABASE_URL')
