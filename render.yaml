@@ -6,12 +6,14 @@ services:
       python -m pip install --upgrade pip setuptools wheel
       pip install -r requirements.txt --no-cache-dir
     startCommand: |
-      # Create directories with absolute paths
+      # Create parent directory first with correct permissions
+      mkdir -p /opt/data
+      chmod 755 /opt/data
+      # Then create subdirectories
       mkdir -p /opt/data/static /opt/data/uploads /opt/data/output /opt/data/temp
       chmod -R 755 /opt/data
-      # Copy static files once
-      cp -r $HOME/project/src/app/static/* /opt/data/static/ || true
-      # Now start the app
+      # Copy static files
+      cp -r app/static/* /opt/data/static/ 2>/dev/null || true
       gunicorn wsgi:app --timeout 120 --workers 2 --threads 2
     envVars:
       - key: FLASK_ENV
