@@ -104,25 +104,15 @@ def create_app():
         
         # Handle static files for Render environment
         if os.environ.get('RENDER') == "true":
-            # Create the base static directory
-            os.makedirs(STATIC_FOLDER, exist_ok=True)
+            # Verify static directory exists (created in startCommand)
+            if not os.path.exists(STATIC_FOLDER):
+                raise RuntimeError(f"Static directory {STATIC_FOLDER} not found")
             
-            # Copy static files to mounted disk while preserving directory structure
-            local_static = os.path.join(os.path.dirname(__file__), 'static')
-            if os.path.exists(local_static):
-                for root, dirs, files in os.walk(local_static):
-                    for file in files:
-                        # Get the relative path from local_static
-                        rel_path = os.path.relpath(root, local_static)
-                        # Create source and destination paths
-                        src_file = os.path.join(root, file)
-                        dst_dir = os.path.join(STATIC_FOLDER, rel_path)
-                        dst_file = os.path.join(dst_dir, file)
-                        
-                        # Create destination directory if it doesn't exist
-                        os.makedirs(dst_dir, exist_ok=True)
-                        # Copy the file
-                        shutil.copy2(src_file, dst_file)
+            # Only copy files if directory is empty
+            if not os.listdir(STATIC_FOLDER):
+                local_static = os.path.join(os.path.dirname(__file__), 'static')
+                if os.path.exists(local_static):
+                    shutil.copytree(local_static, STATIC_FOLDER, dirs_exist_ok=True)
     
     # Add this to force HTTPS in production
     @app.before_request
