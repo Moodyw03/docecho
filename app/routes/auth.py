@@ -29,16 +29,13 @@ def login():
                 return redirect(url_for('auth.login'))
             if user.check_password(form.password.data):
                 login_user(user)
-                flash('Logged in successfully.')
                 return redirect(url_for('main.index'))
         flash('Invalid email or password')
     return render_template('auth/login.html', form=form)
 
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
-    print("\n=== Starting Registration Process ===")
     if current_user.is_authenticated:
-        print("User already authenticated, redirecting to index")
         return redirect(url_for('main.index'))
     
     form = RegistrationForm()
@@ -68,7 +65,7 @@ def register():
             try:
                 send_verification_email(new_user)
                 session['unverified_email'] = new_user.email
-                flash('Please check your email to verify your account.', 'info')
+                flash('Registration successful! Please check your email to verify your account.', 'success')
                 return redirect(url_for('auth.login'))
                 
             except Exception as email_error:
