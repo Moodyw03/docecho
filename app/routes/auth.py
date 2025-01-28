@@ -126,10 +126,13 @@ def verify_email(token):
 
 def send_verification_email(user):
     try:
+        # Verify JWT secret is configured
+        if not current_app.config.get('JWT_SECRET_KEY'):
+            raise ValueError("Missing JWT_SECRET_KEY configuration")
+
         print("\n=== Starting verification email process ===")
         print(f"Sending to user: {user.email}")
         
-        # Ensure proper token encoding
         token = jwt.encode(
             {
                 'user_id': user.id,

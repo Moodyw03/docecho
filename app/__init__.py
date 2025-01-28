@@ -16,6 +16,12 @@ def create_app():
     app = Flask(__name__)
     load_dotenv()  # Ensure environment variables are loaded
     
+    # Update config loading
+    app.config.update(
+        JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', 'fallback_secret_for_dev'),
+        # Keep other existing configs
+    )
+    
     # Add this configuration section
     app.config.from_object(Config)
     
