@@ -28,7 +28,7 @@
       margin: 0;
       padding: 0;
       height: 100vh;
-      background-color: var(--bg-secondary);  /* Replace gradient with solid color */
+      background-color: var(--bg-secondary);
       color: var(--text-color);
       display: flex;
       flex-direction: column;
@@ -36,6 +36,8 @@
       line-height: 1.6;
       overflow: hidden;
       position: relative;
+      justify-content: center;
+      min-height: 100vh;
     }
 
     /* Remove the body::before gradient overlay */
@@ -48,10 +50,10 @@
       max-width: 1200px;
       padding: 1rem;
       margin: 0 auto;
-      height: calc(100vh - 80px);
+      height: auto;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      margin-top: 2rem;
     }
 
     .glass-container {
@@ -63,7 +65,7 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
       width: 90%;
       max-width: 600px;
-      margin: 0 auto 70px;
+      margin: 3rem auto;
       border: 1px solid var(--border-color);
       transition: transform 0.3s ease;
       position: relative;
@@ -228,8 +230,7 @@
       color: var(--text-muted);
       width: 100%;
       background: var(--bg-primary);
-      position: fixed;
-      bottom: 0;
+      position: static;
       border-top: 1px solid var(--border-color);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
@@ -442,21 +443,6 @@
       </div>
     </div>
   </div>
-
-  <footer>
-    <p>
-      &copy; 2024 DocEcho |
-      <a href="{{ url_for('main.index') }}">Home</a> |
-      <a href="{{ url_for('main.pricing') }}">Pricing</a> |
-      {% if current_user.is_authenticated %}
-        <a href="#">Credits: {{ current_user.credits }}</a> |
-        <a href="{{ url_for('auth.logout') }}">Logout</a>
-      {% else %}
-        <a href="{{ url_for('auth.login') }}">Login</a> |
-        <a href="{{ url_for('auth.register') }}">Register</a>
-      {% endif %}
-    </p>
-  </footer>
 
   <script>
     document.getElementById("pdf_file").addEventListener("change", function () {
