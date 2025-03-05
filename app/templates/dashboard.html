@@ -132,6 +132,42 @@
         background-color: var(--bg-hover);
     }
     
+    .account-settings {
+        background-color: var(--card-bg);
+        border-radius: 10px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .settings-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .settings-item:last-child {
+        border-bottom: none;
+    }
+    
+    .settings-label {
+        font-weight: 500;
+        color: var(--text-color);
+    }
+    
+    .settings-action {
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.3s ease;
+    }
+    
+    .settings-action:hover {
+        color: var(--primary-hover);
+        text-decoration: underline;
+    }
+    
     @media (max-width: 768px) {
         .dashboard-header {
             flex-direction: column;
@@ -170,6 +206,20 @@
                 </form>
             </div>
             {% endfor %}
+        </div>
+    </div>
+    
+    <div class="dashboard-section">
+        <h2 class="section-title">Account Settings</h2>
+        <div class="account-settings">
+            <div class="settings-item">
+                <div class="settings-label">Email Address</div>
+                <div>{{ user.email }}</div>
+            </div>
+            <div class="settings-item">
+                <div class="settings-label">Password</div>
+                <a href="{{ url_for('auth.update_password') }}" class="settings-action">Update Password</a>
+            </div>
         </div>
     </div>
     

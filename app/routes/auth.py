@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models.user import User
-from app.forms import RegistrationForm, LoginForm
+from app.forms import RegistrationForm, LoginForm, PasswordUpdateForm
 from app import db
 import jwt
 from datetime import datetime, timedelta
@@ -377,3 +377,22 @@ def test_reset_email():
         return f"Test password reset email sent to {user.email}. Check your inbox."
     else:
         return "Failed to send test password reset email. Check the logs for details.", 500
+
+@bp.route('/update-password', methods=['GET', 'POST'])
+@login_required
+def update_password():
+    form = PasswordUpdateForm()
+    if form.validate_on_submit():
+        # Verify current password
+        if not current_user.check_password(form.current_password.data):
+            flash('Current password is incorrect', 'danger')
+            return redirect(url_for('auth.update_password'))
+        
+        # Update password
+        current_user.set_password(form.new_password.data)
+        db.session.commit()
+        
+        flash('Your password has been updated successfully', 'success')
+        return redirect(url_for('main.dashboard'))
+    
+    return render_template('auth/update_password.html', form=form)
