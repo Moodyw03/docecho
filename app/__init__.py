@@ -31,23 +31,51 @@ def create_app():
     app = Flask(__name__)
     load_dotenv()  # Ensure environment variables are loaded
     
-    # Update config loading
+    # Load configuration from Config class
+    app.config.from_object(Config)
+    
+    # Override with environment-specific settings
     app.config.update(
         JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', 'fallback_secret_for_dev'),
-        # Keep other existing configs
+        MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
+        SENDGRID_API_KEY=os.getenv('SENDGRID_API_KEY')
     )
     
-    # Add this configuration section
-    app.config.from_object(Config)
+    # Configure database
+    configure_database(app)
     
-    # Configure SendGrid
-    app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
-    app.config['SENDGRID_API_KEY'] = os.getenv('SENDGRID_API_KEY')
+    # Set up static folders
+    configure_static_folders(app)
     
-    # Remove the duplicate secret key config and keep:
-    app.config.from_object(Config)
+    # Initialize extensions
+    migrate = Migrate(app, db)
+    db.init_app(app)
+    login_manager.init_app(app)
+    login_manager.login_view = 'auth.login'
     
-    # Get the database URL from environment variable
+    # Register blueprints and initialize models
+    with app.app_context():
+        register_blueprints_and_models(app)
+    
+    # Start background task for cleaning up expired progress records
+    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app,))
+        cleanup_thread.daemon = True
+        cleanup_thread.start()
+        app.logger.info("Started background task for cleaning up expired progress records")
+    
+    # Add HTTPS enforcement in production
+    @app.before_request
+    def enforce_https():
+        if os.environ.get('FLASK_ENV') == 'production':
+            if not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
+                url = request.url.replace('http://', 'https://', 1)
+                return redirect(url, code=301)
+    
+    return app
+
+def configure_database(app):
+    """Configure database connection"""
     database_url = os.getenv('DATABASE_URL')
     
     if not database_url:
@@ -57,7 +85,7 @@ def create_app():
         database_url = 'sqlite:///instance/app.db'
         os.makedirs('instance', exist_ok=True)
     
-    # Keep the postgres:// to postgresql:// replacement
+    # Convert postgres:// to postgresql:// for SQLAlchemy 1.4+
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     
@@ -69,8 +97,9 @@ def create_app():
         'pool_size': 20,
         'max_overflow': 0
     }
-    
-    # Set up static folders
+
+def configure_static_folders(app):
+    """Configure static, upload, output, and temp folders"""
     if os.environ.get('RENDER') == "true":
         STATIC_FOLDER = '/opt/data/static'
     else:
@@ -83,54 +112,28 @@ def create_app():
         TEMP_FOLDER='/opt/data/temp'
     )
     
-    # Initialize Flask-Migrate
-    migrate = Migrate(app, db)
-    
-    # Initialize extensions with the app
-    db.init_app(app)
-    login_manager.init_app(app)
-    login_manager.login_view = 'auth.login'
-    
-    # Import models after db initialization
-    with app.app_context():
-        from app.models.user import User
-        from app.models.task_progress import TaskProgress
+    # Handle static files for Render environment
+    if os.environ.get('RENDER') == "true":
+        try:
+            os.makedirs(STATIC_FOLDER, exist_ok=True)
+        except Exception as e:
+            app.logger.error(f"Static directory creation failed: {str(e)}")
         
-        # Create database tables
-        db.create_all()
-        
-        # Register blueprints
-        from app.routes.auth import bp as auth_bp
-        from app.routes.main import bp as main_bp
-        
-        app.register_blueprint(auth_bp, url_prefix='/auth')
-        app.register_blueprint(main_bp)
-        
-        # Handle static files for Render environment
-        if os.environ.get('RENDER') == "true":
-            # Attempt to create static directory if missing
-            try:
-                os.makedirs(STATIC_FOLDER, exist_ok=True)
-            except Exception as e:
-                app.logger.error(f"Static directory creation failed: {str(e)}")
-            
-            if not os.path.exists(STATIC_FOLDER):
-                app.logger.warning(f"Static directory {STATIC_FOLDER} not found - using fallback")
-                STATIC_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
+        if not os.path.exists(STATIC_FOLDER):
+            app.logger.warning(f"Static directory {STATIC_FOLDER} not found - using fallback")
+            app.static_folder = os.path.join(os.path.dirname(__file__), 'static')
+
+def register_blueprints_and_models(app):
+    """Register blueprints and initialize models"""
+    from app.models.user import User
+    from app.models.task_progress import TaskProgress
     
-    # Start background task for cleaning up expired progress records
-    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app,))
-        cleanup_thread.daemon = True
-        cleanup_thread.start()
-        app.logger.info("Started background task for cleaning up expired progress records")
+    # Create database tables
+    db.create_all()
     
-    # Add this to force HTTPS in production
-    @app.before_request
-    def enforce_https():
-        if os.environ.get('FLASK_ENV') == 'production':
-            if not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
-                url = request.url.replace('http://', 'https://', 1)
-                return redirect(url, code=301)
+    # Register blueprints
+    from app.routes.auth import bp as auth_bp
+    from app.routes.main import bp as main_bp
     
-    return app 
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(main_bp) 
