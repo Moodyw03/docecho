@@ -11,7 +11,10 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To
 import os
 from sqlalchemy import func
+import logging
+from app.utils.email import send_verification_email, send_password_reset_email
 
+logger = logging.getLogger(__name__)
 bp = Blueprint('auth', __name__)
 
 @bp.route('/login', methods=['GET', 'POST'])
@@ -102,166 +105,59 @@ def logout():
 @bp.route('/verify-email/<token>')
 def verify_email(token):
     try:
-        decoded = jwt.decode(
-            token,
-            current_app.config['JWT_SECRET_KEY'],
-            algorithms=['HS256']
-        )
-        user = User.query.get(decoded['user_id'])
+        payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
+        user_id = payload['user_id']
+        user = User.query.get(user_id)
         
-        if user and not user.email_verified:
-            user.email_verified = True
-            user.verification_token = None
-            db.session.commit()
-            flash('Email verified successfully! You can now login.', 'success')
-        else:
-            flash('Invalid or expired verification link.', 'danger')
-            
-    except jwt.ExpiredSignatureError:
-        flash('Verification link has expired.', 'danger')
-    except jwt.InvalidTokenError:
-        flash('Invalid verification link.', 'danger')
+        if not user:
+            flash('Invalid verification link', 'danger')
+            return redirect(url_for('auth.login'))
         
-    return redirect(url_for('auth.login'))
-
-def send_verification_email(user):
-    try:
-        # Verify JWT secret is configured
-        if not current_app.config.get('JWT_SECRET_KEY'):
-            raise ValueError("Missing JWT_SECRET_KEY configuration")
-
-        print("\n=== Starting verification email process ===")
-        print(f"Sending to user: {user.email}")
+        if user.email_verified:
+            flash('Your email has already been verified', 'info')
+            return redirect(url_for('auth.login'))
         
-        token = jwt.encode(
-            {
-                'user_id': user.id,
-                'exp': datetime.utcnow() + timedelta(hours=24)
-            },
-            current_app.config['JWT_SECRET_KEY'],
-            algorithm='HS256'
-        )
-        print("Token generated successfully")
-        
-        # Generate verification URL using request.host_url
-        verification_url = url_for(
-            'auth.verify_email', 
-            token=token, 
-            _external=True,
-            _scheme='http' if os.environ.get('FLASK_ENV') == 'development' else 'https'
-        )
-        print(f"Generated verification URL: {verification_url}")
-        
-        # Try rendering the template first to catch any template errors
-        try:
-            html_content = render_template(
-                'emails/verify_email.html',
-                verification_url=verification_url
-            )
-            print("Email template rendered successfully")
-            print(f"Template content preview: {html_content[:200]}...")
-        except Exception as template_error:
-            print(f"Template rendering error: {str(template_error)}")
-            raise ValueError(f"Failed to render email template: {str(template_error)}")
-        
-        if not current_app.config.get('MAIL_DEFAULT_SENDER'):
-            print("Error: MAIL_DEFAULT_SENDER not configured!")
-            raise ValueError("Missing sender email configuration")
-            
-        # Create SendGrid mail object
-        message = Mail(
-            from_email=Email(
-                email="gabbipereira03@gmail.com",  # Verified email
-                name="DocEcho Team"  # Optional display name
-            ),
-            to_emails=[To(user.email)],
-            subject='Verify Your Email Address',
-            html_content=html_content
-        )
-        print("SendGrid message object created")
-        
-        # Send using SendGrid API
-        sendgrid_api_key = current_app.config.get('SENDGRID_API_KEY')
-        if not sendgrid_api_key:
-            print("Error: SENDGRID_API_KEY not configured!")
-            raise ValueError("Missing SendGrid API key configuration")
-            
-        print("Initializing SendGrid client...")
-        sg = SendGridAPIClient(sendgrid_api_key)
-        
-        print("Attempting to send email...")
-        response = sg.send(message)
-        
-        if response.status_code not in [200, 202]:  # 202 is standard for async acceptance
-            error_msg = f"SendGrid API error - Status: {response.status_code}"
-            print(error_msg)
-            if response.body:
-                print(f"Response body: {response.body.decode()}")
-            raise ValueError(f"Failed to send email - Status: {response.status_code}")
-            
-        print(f"Email sent successfully! Status: {response.status_code}")
-        print(f"Message ID: {response.headers.get('X-Message-Id', 'Not available')}")
-        print("=== End of verification email process ===\n")
-        
-        # Commit before sending email
+        user.email_verified = True
         db.session.commit()
-        print("Token committed to database")
-        
-    except jwt.PyJWTError as e:
-        print(f"JWT error: {str(e)}")
-        raise ValueError("Failed to generate verification token")
+        flash('Your email has been verified! You can now log in.', 'success')
+        return redirect(url_for('auth.login'))
     except Exception as e:
-        print(f"Email error: {str(e)}")
-        if hasattr(e, 'body'):
-            print(f"SendGrid error details: {e.body}")
-        raise
+        logger.error(f"Email verification error: {str(e)}")
+        flash('The verification link is invalid or has expired', 'danger')
+        return redirect(url_for('auth.login'))
+
+def generate_verification_token(user):
+    """Generate a JWT token for email verification."""
+    payload = {
+        'user_id': user.id,
+        'exp': datetime.utcnow() + timedelta(hours=24)
+    }
+    token = jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+    return token
 
 @bp.route('/resend-verification')
 def resend_verification():
     email = session.get('unverified_email')
     if not email:
-        flash('No email to verify', 'error')
+        flash('No email to verify', 'danger')
         return redirect(url_for('auth.login'))
     
     user = User.query.filter_by(email=email).first()
-    
     if not user:
-        flash('User not found', 'error')
+        flash('User not found', 'danger')
         return redirect(url_for('auth.login'))
     
-    # Generate new verification token
-    token = user.set_verification_token()
+    if user.email_verified:
+        flash('Your email is already verified', 'info')
+        return redirect(url_for('auth.login'))
     
-    # Create verification URL with token parameter
-    verification_url = url_for(
-        'auth.verify_email', 
-        token=token,  # Add token parameter here
-        _external=True,
-        _scheme='http' if os.environ.get('FLASK_ENV') == 'development' else 'https'
-    )
+    token = generate_verification_token(user)
+    success = send_verification_email(user, token)
     
-    # Prepare email
-    message = Mail(
-        from_email=Email(current_app.config['MAIL_DEFAULT_SENDER']),
-        to_emails=[To(user.email)],
-        subject='Verify your DocEcho account',
-        html_content=f'''
-            <h1>Welcome to DocEcho!</h1>
-            <p>Please click the link below to verify your email address:</p>
-            <p><a href="{verification_url}">Verify Email</a></p>
-            <p>If you did not create this account, please ignore this email.</p>
-        '''
-    )
-
-    try:
-        sg = SendGridAPIClient(current_app.config['SENDGRID_API_KEY'])
-        response = sg.send(message)
-        if response.status_code in [200, 202]:
-            session.pop('unverified_email', None)
-            flash('Verification email sent! Please check your inbox.', 'success')
-    except Exception as e:
-        current_app.logger.error(f'Error sending verification email: {str(e)}')
-        flash('Error sending verification email. Please try again.', 'error')
+    if success:
+        flash('Verification email sent. Please check your inbox.', 'success')
+    else:
+        flash('Failed to send verification email. Please try again later.', 'danger')
     
     return redirect(url_for('auth.login'))
 
@@ -372,3 +268,112 @@ def dev_clear_users():
     except Exception as e:
         db.session.rollback()
         return f"Error clearing users: {str(e)}", 500
+
+@bp.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for('main.index'))
+    
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        if not email:
+            flash('Please enter your email address', 'danger')
+            return render_template('auth/forgot_password.html')
+        
+        user = User.query.filter(func.lower(User.email) == email).first()
+        if not user:
+            # Don't reveal that the user doesn't exist
+            flash('If your email is registered, you will receive a password reset link shortly', 'info')
+            return render_template('auth/forgot_password.html')
+        
+        # Generate a password reset token
+        payload = {
+            'user_id': user.id,
+            'exp': datetime.utcnow() + timedelta(hours=1)
+        }
+        token = jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+        
+        # Send the password reset email
+        success = send_password_reset_email(user, token)
+        
+        if success:
+            flash('A password reset link has been sent to your email address', 'success')
+        else:
+            logger.error(f"Failed to send password reset email to {email}")
+            flash('Failed to send password reset email. Please try again later.', 'danger')
+        
+        return render_template('auth/forgot_password.html')
+    
+    return render_template('auth/forgot_password.html')
+
+@bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('main.index'))
+    
+    try:
+        payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
+        user_id = payload['user_id']
+        user = User.query.get(user_id)
+        
+        if not user:
+            flash('Invalid reset link', 'danger')
+            return redirect(url_for('auth.login'))
+        
+    except jwt.ExpiredSignatureError:
+        flash('The reset link has expired', 'danger')
+        return redirect(url_for('auth.forgot_password'))
+    except jwt.InvalidTokenError:
+        flash('Invalid reset link', 'danger')
+        return redirect(url_for('auth.login'))
+    
+    if request.method == 'POST':
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if not password or not confirm_password:
+            flash('Please enter and confirm your new password', 'danger')
+            return render_template('auth/reset_password.html', token=token)
+        
+        if password != confirm_password:
+            flash('Passwords do not match', 'danger')
+            return render_template('auth/reset_password.html', token=token)
+        
+        if len(password) < 8:
+            flash('Password must be at least 8 characters long', 'danger')
+            return render_template('auth/reset_password.html', token=token)
+        
+        # Update the user's password
+        user.set_password(password)
+        db.session.commit()
+        
+        flash('Your password has been reset successfully. You can now log in with your new password.', 'success')
+        return redirect(url_for('auth.login'))
+    
+    return render_template('auth/reset_password.html', token=token)
+
+@bp.route('/test-reset-email')
+def test_reset_email():
+    """Test route to verify password reset email functionality"""
+    if not current_app.debug:
+        return "This route is only available in debug mode", 403
+    
+    # Get the first user or create a test user
+    user = User.query.first()
+    if not user:
+        return "No users found in the database", 404
+    
+    # Generate a test token
+    payload = {
+        'user_id': user.id,
+        'exp': datetime.utcnow() + timedelta(hours=1)
+    }
+    token = jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+    
+    # Send the test email
+    success = send_password_reset_email(user, token)
+    
+    if success:
+        return f"Test password reset email sent to {user.email}. Check your inbox."
+    else:
+        return "Failed to send test password reset email. Check the logs for details.", 500

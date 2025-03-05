@@ -168,4 +168,53 @@ footer a:hover {
     color: #ff3b30;
     font-size: 0.8rem;
     margin-top: 0.25rem;
+}
+
+.forgot-password {
+    text-align: right;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.forgot-password a {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.forgot-password a:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+/* Styles for alert messages */
+.alert {
+    padding: 1rem;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.alert-success {
+    background: rgba(52, 199, 89, 0.1);
+    border: 1px solid rgba(52, 199, 89, 0.2);
+    color: #34c759;
+}
+
+.alert-danger {
+    background: rgba(255, 59, 48, 0.1);
+    border: 1px solid rgba(255, 59, 48, 0.2);
+    color: #ff3b30;
+}
+
+.alert-info {
+    background: rgba(0, 122, 255, 0.1);
+    border: 1px solid rgba(0, 122, 255, 0.2);
+    color: #007aff;
+}
+
+.alert-warning {
+    background: rgba(255, 149, 0, 0.1);
+    border: 1px solid rgba(255, 149, 0, 0.2);
+    color: #ff9500;
 } 

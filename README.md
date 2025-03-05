@@ -9,6 +9,7 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
 - **Multiple Output Formats**: Choose between audio-only or both audio and PDF outputs
 - **Progress Tracking**: Real-time progress updates during conversion
 - **User Management**: User accounts with credit system for document processing
+- **Account Recovery**: Password reset functionality via email
 - **Responsive Design**: Modern, glass-like UI that works on desktop and mobile devices
 
 ## Installation
@@ -62,9 +63,10 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
    MAIL_USE_TLS=true
    MAIL_DEFAULT_SENDER=your_verified_email@example.com
    SENDGRID_API_KEY=your_sendgrid_api_key
+   BASE_URL=http://localhost:8000  # Change this to your production URL in production
    ```
 
-   > **Important**: For user registration to work, you must configure the email settings. The application uses SendGrid for sending verification emails.
+   > **Important**: For user registration and password reset to work, you must configure the email settings correctly.
 
 5. Initialize the database:
 
@@ -82,11 +84,40 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
 
 7. Access the application at http://localhost:8000
 
+### Email Configuration
+
+The application uses SendGrid for sending verification and password reset emails. To configure email functionality:
+
+1. Create a SendGrid account and obtain an API key
+2. Add a verified sender email address in your SendGrid account
+3. Configure the email settings in your `.env` file as shown above
+4. Test the email functionality using the `/auth/test-reset-email` route (in development mode)
+
+> **Note**: Without proper email configuration, user registration and password reset features will not work correctly.
+
 ### Production Deployment
 
 The application is configured for deployment on Render.com with the included `render.yaml` file. It uses PostgreSQL for the database and sets up the necessary environment variables.
 
 ## Usage
+
+### Account Management
+
+#### Registration and Login
+
+1. Create an account by clicking "Register" on the login page
+2. Verify your email address by clicking the link sent to your email
+3. Log in with your email and password
+
+#### Password Recovery
+
+If you forget your password:
+
+1. Click "Forgot password?" on the login page
+2. Enter your email address
+3. Check your email for a password reset link
+4. Click the link and set a new password
+5. Log in with your new password
 
 ### Converting a PDF to Audio
 

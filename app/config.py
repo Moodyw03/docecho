@@ -22,3 +22,15 @@ class Config:
     # Stripe configuration
     STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY')
     STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
+    
+    # Email configuration
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.sendgrid.net')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))
+    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() in ['true', 'yes', '1']
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', 'apikey')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER')
+    SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
+    
+    # Application URL for email links
+    BASE_URL = os.environ.get('BASE_URL', 'http://localhost:8000')

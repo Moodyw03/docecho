@@ -9,6 +9,7 @@ from app.config import Config
 import threading
 import time
 import copy
+from app.extensions import db, login_manager, mail
 
 # Initialize extensions without the app
 db = SQLAlchemy()
@@ -55,6 +56,8 @@ def create_app():
     print(f"Stripe Public Key configured: {'Yes' if app.config.get('STRIPE_PUBLIC_KEY') else 'No'}")
     print(f"Stripe Secret Key configured: {'Yes' if app.config.get('STRIPE_SECRET_KEY') else 'No'}")
     print(f"Stripe Webhook Secret configured: {'Yes' if app.config.get('STRIPE_WEBHOOK_SECRET') else 'No'}")
+    print(f"Mail Server configured: {'Yes' if app.config.get('MAIL_SERVER') else 'No'}")
+    print(f"Mail Default Sender configured: {'Yes' if app.config.get('MAIL_DEFAULT_SENDER') else 'No'}")
     
     # Configure database
     configure_database(app)
@@ -69,11 +72,16 @@ def create_app():
     with app.app_context():
         progress_dir = os.path.join(app.root_path, 'static', 'progress')
         os.makedirs(progress_dir, exist_ok=True)
+        
+        # Ensure email templates directory exists
+        email_templates_dir = os.path.join(app.root_path, 'templates', 'email')
+        os.makedirs(email_templates_dir, exist_ok=True)
     
     # Initialize other extensions after db
     migrate = Migrate(app, db)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
+    mail.init_app(app)
     
     # Register blueprints and initialize models
     with app.app_context():
