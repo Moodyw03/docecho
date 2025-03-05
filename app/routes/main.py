@@ -6,7 +6,7 @@ from app.utils.progress import get_progress, update_progress, delete_progress
 import os
 import uuid
 import threading
-from app.utils.pdf_processor import process_pdf
+from app.utils.pdf_processor import process_pdf as process_pdf_util
 import stripe
 from werkzeug.utils import secure_filename
 
@@ -75,19 +75,30 @@ def process_file():
             current_user.credits -= required_credits
             db.session.commit()
             
-            def process_with_app_context(app, *args):
-                with app.app_context():
-                    process_pdf(*args)
-            
             # Generate output filename
             output_filename = f"{os.path.splitext(safe_filename)[0]}_{task_id}.mp3"
             output_path = os.path.join(output_dir, output_filename)
             
-            # Start processing in a background thread with app context
-            thread = threading.Thread(
-                target=process_with_app_context,
-                args=(app, safe_filename, file_path, voice, speed, task_id, output_format, output_path)
-            )
+            # Define a function to process PDF with app context
+            def process_with_app_context():
+                with app.app_context():
+                    try:
+                        # Call the utility function directly
+                        process_pdf_util(
+                            filename=safe_filename,
+                            file_path=file_path,
+                            voice=voice,
+                            speed=speed,
+                            task_id=task_id,
+                            output_format=output_format,
+                            output_path=output_path
+                        )
+                    except Exception as e:
+                        current_app.logger.error(f"Error processing PDF: {str(e)}")
+                        update_progress(task_id, status='error', error=str(e), progress=0)
+            
+            # Start processing in a background thread
+            thread = threading.Thread(target=process_with_app_context)
             thread.daemon = True
             thread.start()
             
@@ -227,24 +238,3 @@ def clear_users():
         db.session.commit()
         return 'Users cleared'
     return 'Not allowed in production'
-
-def process_pdf(filename, file_path, voice, speed, task_id, output_format, output_path):
-    try:
-        # Call the actual PDF processing function from utils
-        from app.utils.pdf_processor import process_pdf as process_pdf_util
-        
-        # Pass the output path to the processing function
-        process_pdf_util(
-            filename=filename,
-            file_path=file_path,
-            voice=voice,
-            speed=speed,
-            task_id=task_id,
-            output_format=output_format,
-            output_path=output_path
-        )
-        
-    except Exception as e:
-        # Log the error
-        current_app.logger.error(f"Error processing PDF: {str(e)}")
-        raise e
