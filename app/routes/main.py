@@ -9,6 +9,7 @@ import threading
 from app.utils.pdf_processor import process_pdf as process_pdf_util
 import stripe
 from werkzeug.utils import secure_filename
+import copy
 
 bp = Blueprint('main', __name__)
 
@@ -72,33 +73,41 @@ def process_file():
             if current_user.credits < required_credits:
                 return jsonify({"error": "Insufficient credits"}), 402
             
-            current_user.credits -= required_credits
-            db.session.commit()
+            # Deduct credits and commit before starting the thread
+            user_id = current_user.id
+            with app.app_context():
+                user = User.query.get(user_id)
+                if user:
+                    user.credits -= required_credits
+                    db.session.commit()
             
             # Generate output filename
             output_filename = f"{os.path.splitext(safe_filename)[0]}_{task_id}.mp3"
             output_path = os.path.join(output_dir, output_filename)
             
+            # Store all parameters needed for processing
+            process_params = {
+                'filename': safe_filename,
+                'file_path': file_path,
+                'voice': voice,
+                'speed': speed,
+                'task_id': task_id,
+                'output_format': output_format,
+                'output_path': output_path
+            }
+            
             # Define a function to process PDF with app context
-            def process_with_app_context():
+            def process_with_app_context(app, params):
                 with app.app_context():
                     try:
-                        # Call the utility function directly
-                        process_pdf_util(
-                            filename=safe_filename,
-                            file_path=file_path,
-                            voice=voice,
-                            speed=speed,
-                            task_id=task_id,
-                            output_format=output_format,
-                            output_path=output_path
-                        )
+                        # Call the utility function directly with unpacked parameters
+                        process_pdf_util(**params)
                     except Exception as e:
-                        current_app.logger.error(f"Error processing PDF: {str(e)}")
-                        update_progress(task_id, status='error', error=str(e), progress=0)
+                        print(f"Error processing PDF: {str(e)}")
+                        update_progress(params['task_id'], status='error', error=str(e), progress=0)
             
             # Start processing in a background thread
-            thread = threading.Thread(target=process_with_app_context)
+            thread = threading.Thread(target=process_with_app_context, args=(app, process_params))
             thread.daemon = True
             thread.start()
             

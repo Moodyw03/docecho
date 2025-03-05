@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from app.config import Config
 import threading
 import time
+import copy
 
 # Initialize extensions without the app
 db = SQLAlchemy()
@@ -18,15 +19,19 @@ def cleanup_expired_progress(app):
     """Background task to clean up expired progress records"""
     while True:
         try:
-            # Create a new app context for each cleanup cycle
+            # Create a fresh app context for each cleanup cycle
             with app.app_context():
+                # Import here to avoid circular imports
                 from app.models.task_progress import TaskProgress
+                
+                # Create a new session for this operation
                 TaskProgress.cleanup_expired()
-                app.logger.info("Cleaned up expired progress records")
+                print("Cleaned up expired progress records")
         except Exception as e:
-            # Log the error outside the app context to avoid potential circular issues
+            # Log the error outside the app context
             print(f"Error cleaning up expired progress records: {str(e)}")
-        # Sleep for 1 hour
+        
+        # Sleep for 1 hour between cleanup cycles
         time.sleep(3600)
 
 def create_app():
@@ -62,11 +67,11 @@ def create_app():
     # Start background task for cleaning up expired progress records
     # Only start in non-debug mode or when running the main thread in debug mode
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        # Pass the app directly to the thread
+        # Create a separate thread for cleanup
         cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app,))
         cleanup_thread.daemon = True
         cleanup_thread.start()
-        app.logger.info("Started background task for cleaning up expired progress records")
+        print("Started background task for cleaning up expired progress records")
     
     # Add HTTPS enforcement in production
     @app.before_request

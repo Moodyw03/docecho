@@ -17,5 +17,27 @@ class TaskProgress(db.Model):
     @classmethod
     def cleanup_expired(cls):
         """Delete expired progress records"""
-        cls.query.filter(cls.expires_at < datetime.utcnow()).delete()
-        db.session.commit() 
+        try:
+            # Get current time once to ensure consistency
+            now = datetime.utcnow()
+            
+            # Find expired records
+            expired_records = cls.query.filter(cls.expires_at < now).all()
+            
+            # Log how many records will be deleted
+            if expired_records:
+                print(f"Deleting {len(expired_records)} expired progress records")
+                
+                # Delete records one by one to avoid potential issues
+                for record in expired_records:
+                    db.session.delete(record)
+                
+                # Commit the changes
+                db.session.commit()
+            else:
+                print("No expired progress records found")
+                
+        except Exception as e:
+            # Rollback in case of error
+            db.session.rollback()
+            raise e 
