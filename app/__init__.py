@@ -16,16 +16,18 @@ login_manager = LoginManager()
 # Background task for cleaning up expired progress records
 def cleanup_expired_progress(app):
     """Background task to clean up expired progress records"""
-    with app.app_context():
-        from app.models.task_progress import TaskProgress
-        while True:
-            try:
+    while True:
+        try:
+            # Create a new app context for each cleanup cycle
+            with app.app_context():
+                from app.models.task_progress import TaskProgress
                 TaskProgress.cleanup_expired()
                 app.logger.info("Cleaned up expired progress records")
-            except Exception as e:
-                app.logger.error(f"Error cleaning up expired progress records: {str(e)}")
-            # Sleep for 1 hour
-            time.sleep(3600)
+        except Exception as e:
+            # Log the error outside the app context to avoid potential circular issues
+            print(f"Error cleaning up expired progress records: {str(e)}")
+        # Sleep for 1 hour
+        time.sleep(3600)
 
 def create_app():
     app = Flask(__name__)
@@ -58,8 +60,10 @@ def create_app():
         register_blueprints_and_models(app)
     
     # Start background task for cleaning up expired progress records
+    # Only start in non-debug mode or when running the main thread in debug mode
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app,))
+        # Create a copy of the app for the background thread
+        cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app._get_current_object(),))
         cleanup_thread.daemon = True
         cleanup_thread.start()
         app.logger.info("Started background task for cleaning up expired progress records")
