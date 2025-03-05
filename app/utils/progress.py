@@ -111,6 +111,7 @@ def set_progress(task_id, data):
 def _set_progress_internal(task_id, data):
     """Internal function to set progress with proper error handling"""
     try:
+        # Use the existing session with proper context management
         # Check if task exists
         task = TaskProgress.query.filter_by(task_id=task_id).first()
         
@@ -131,8 +132,10 @@ def _set_progress_internal(task_id, data):
         print(f"Progress data saved for task {task_id}")
         return True
     except Exception as e:
-        if 'db' in locals() and hasattr(db, 'session'):
+        try:
             db.session.rollback()
+        except:
+            pass
         print(f"Error in _set_progress_internal: {str(e)}")
         traceback.print_exc()
         # Try file-based fallback
@@ -163,7 +166,8 @@ def _get_progress_internal(task_id):
         task = TaskProgress.query.filter_by(task_id=task_id).first()
         
         if task and not task.is_expired:
-            return json.loads(task.data)
+            result = json.loads(task.data)
+            return result
         
         print(f"No valid progress data found for task {task_id}")
         # Try file-based fallback
@@ -195,6 +199,7 @@ def delete_progress(task_id):
 def _delete_progress_internal(task_id):
     """Internal function to delete progress with proper error handling"""
     try:
+        # Use the existing session with proper context management
         task = TaskProgress.query.filter_by(task_id=task_id).first()
         
         if task:
@@ -209,8 +214,6 @@ def _delete_progress_internal(task_id):
         # Try file-based fallback
         return _delete_progress_file(task_id)
     except Exception as e:
-        if 'db' in locals() and hasattr(db, 'session'):
-            db.session.rollback()
         print(f"Error in _delete_progress_internal: {str(e)}")
         traceback.print_exc()
         # Try file-based fallback

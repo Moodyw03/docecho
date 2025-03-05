@@ -52,7 +52,9 @@ class TaskProgress(db.Model):
                 
         except Exception as e:
             # Rollback in case of error
-            if 'db' in locals() and hasattr(db, 'session'):
+            try:
                 db.session.rollback()
+            except:
+                pass
             current_app.logger.error(f"Error cleaning up expired records: {str(e)}")
             return 0 
