@@ -62,8 +62,8 @@ def create_app():
     # Start background task for cleaning up expired progress records
     # Only start in non-debug mode or when running the main thread in debug mode
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        # Create a copy of the app for the background thread
-        cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app._get_current_object(),))
+        # Pass the app directly to the thread
+        cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app,))
         cleanup_thread.daemon = True
         cleanup_thread.start()
         app.logger.info("Started background task for cleaning up expired progress records")
