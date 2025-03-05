@@ -62,9 +62,16 @@ def create_app():
     # Set up static folders
     configure_static_folders(app)
     
-    # Initialize extensions
-    migrate = Migrate(app, db)
+    # Initialize extensions - IMPORTANT: Initialize db before other extensions
     db.init_app(app)
+    
+    # Create progress directory
+    with app.app_context():
+        progress_dir = os.path.join(app.root_path, 'static', 'progress')
+        os.makedirs(progress_dir, exist_ok=True)
+    
+    # Initialize other extensions after db
+    migrate = Migrate(app, db)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     

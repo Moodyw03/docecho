@@ -532,8 +532,19 @@
     });
 
     function checkProgress(taskId) {
+        console.log(`Checking progress for task: ${taskId}`);
         fetch(`/progress/${taskId}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error('Task not found in database. The server may be restarting or the task was deleted.');
+                    }
+                    return response.json().then(data => {
+                        throw new Error(data.error || `Server error: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 const progressContainer = document.getElementById("progressContainer");
                 const statusMessage = document.getElementById("statusMessage");
@@ -570,7 +581,10 @@
                     } else {
                         window.location.href = `/download/${taskId}?type=${outputFormat}&final=true`;
                     }
-                } else if (data.status !== 'error') {
+                } else if (data.status === 'error') {
+                    statusMessage.textContent = `Error: ${data.error || 'Unknown error occurred'}`;
+                } else {
+                    // Continue checking progress every 2 seconds
                     setTimeout(() => checkProgress(taskId), 2000);
                 }
             })
@@ -578,7 +592,20 @@
                 console.error('Error checking progress:', error);
                 const statusMessage = document.getElementById("statusMessage");
                 if (statusMessage) {
-                    statusMessage.textContent = "Error checking progress. Please try again.";
+                    statusMessage.textContent = `Error: ${error.message}`;
+                }
+                
+                // Retry a few times before giving up
+                const retryCount = window.progressRetryCount || 0;
+                if (retryCount < 5) {
+                    window.progressRetryCount = retryCount + 1;
+                    console.log(`Retrying progress check (${window.progressRetryCount}/5)...`);
+                    setTimeout(() => checkProgress(taskId), 3000);
+                } else {
+                    console.log('Max retries reached, giving up');
+                    if (statusMessage) {
+                        statusMessage.textContent = "Error: Could not track progress after multiple attempts. Please try again.";
+                    }
                 }
             });
     }

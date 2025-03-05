@@ -11,6 +11,7 @@ import stripe
 from werkzeug.utils import secure_filename
 import copy
 import json
+from datetime import datetime
 
 bp = Blueprint('main', __name__)
 
@@ -41,17 +42,32 @@ def process_file():
             
         if file and file.filename.endswith(".pdf"):
             task_id = str(uuid.uuid4())
+            current_app.logger.info(f"Generated task ID: {task_id}")
             
             # Get the current app
             app = current_app._get_current_object()
             
             # Initialize progress tracking for this task
             try:
-                update_progress(task_id, status='uploading', progress=0)
-                current_app.logger.info(f"Created progress tracking for task {task_id}")
+                # Initialize with more data for better tracking
+                initial_progress = {
+                    'status': 'uploading',
+                    'progress': 0,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'task_id': task_id
+                }
+                from app.utils.progress import set_progress
+                success = set_progress(task_id, initial_progress)
+                
+                if success:
+                    current_app.logger.info(f"Created progress tracking for task {task_id}")
+                else:
+                    current_app.logger.warning(f"Progress tracking initialization may have failed for task {task_id}")
             except Exception as e:
-                current_app.logger.error(f"Error initializing progress tracking: {str(e)}")
-                return jsonify({"error": "Error initializing progress tracking"}), 500
+                import traceback
+                error_details = traceback.format_exc()
+                current_app.logger.error(f"Error initializing progress tracking: {str(e)}\n{error_details}")
+                return jsonify({"error": "Error initializing progress tracking", "details": str(e)}), 500
             
             # Create upload directory if it doesn't exist
             upload_dir = os.path.join(app.root_path, 'static', 'uploads')
@@ -68,7 +84,7 @@ def process_file():
             output_format = request.form.get("output_format", "audio")
             speed = float(request.form.get("speed", "1.0"))
             
-            required_credits = 1  # Base for PDF
+            required_credits = 1
             if output_format in ["audio", "both"]:
                 required_credits += 1  # Add 1 more for audio (2 total for audio, 3 for both)
             
@@ -100,7 +116,11 @@ def process_file():
             }
             
             # Log the parameters for debugging
-            current_app.logger.info(f"Processing PDF with parameters: {process_params}")
+            current_app.logger.info(f"Processing PDF with parameters: {json.dumps(process_params, default=str)}")
+            
+            # Update progress to processing
+            from app.utils.progress import update_progress
+            update_progress(task_id, status='processing', progress=5)
             
             # Define a function to process PDF with app context
             def process_with_app_context(app, params):
@@ -110,7 +130,9 @@ def process_file():
                         process_pdf_util(**params)
                         current_app.logger.info(f"PDF processing completed for task {params['task_id']}")
                     except Exception as e:
-                        current_app.logger.error(f"Error processing PDF: {str(e)}")
+                        import traceback
+                        error_details = traceback.format_exc()
+                        current_app.logger.error(f"Error processing PDF: {str(e)}\n{error_details}")
                         update_progress(params['task_id'], status='error', error=str(e), progress=0)
             
             # Start processing in a background thread
@@ -124,7 +146,9 @@ def process_file():
         return jsonify({"error": "Invalid file type"}), 400
         
     except Exception as e:
-        current_app.logger.error(f"Error processing file: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        current_app.logger.error(f"Error processing file: {str(e)}\n{error_details}")
         return jsonify({"error": str(e)}), 500
 
 @bp.route('/progress/<task_id>')
