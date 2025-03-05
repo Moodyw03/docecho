@@ -11,6 +11,12 @@ class TaskProgress(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + timedelta(hours=1))
     
+    def __init__(self, task_id, data, expires_at=None):
+        self.task_id = task_id
+        self.data = data
+        self.created_at = datetime.utcnow()
+        self.expires_at = expires_at or datetime.utcnow() + timedelta(hours=1)
+    
     @property
     def is_expired(self):
         return datetime.utcnow() > self.expires_at

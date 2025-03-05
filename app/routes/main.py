@@ -46,7 +46,12 @@ def process_file():
             app = current_app._get_current_object()
             
             # Initialize progress tracking for this task
-            update_progress(task_id, status='uploading', progress=0)
+            try:
+                update_progress(task_id, status='uploading', progress=0)
+                current_app.logger.info(f"Created progress tracking for task {task_id}")
+            except Exception as e:
+                current_app.logger.error(f"Error initializing progress tracking: {str(e)}")
+                return jsonify({"error": "Error initializing progress tracking"}), 500
             
             # Create upload directory if it doesn't exist
             upload_dir = os.path.join(app.root_path, 'static', 'uploads')
@@ -77,6 +82,7 @@ def process_file():
                 if user:
                     user.credits -= required_credits
                     db.session.commit()
+                    current_app.logger.info(f"Deducted {required_credits} credits from user {user_id}")
             
             # Generate output filename
             output_filename = f"{os.path.splitext(safe_filename)[0]}_{task_id}.mp3"
@@ -93,14 +99,18 @@ def process_file():
                 'output_path': output_path
             }
             
+            # Log the parameters for debugging
+            current_app.logger.info(f"Processing PDF with parameters: {process_params}")
+            
             # Define a function to process PDF with app context
             def process_with_app_context(app, params):
                 with app.app_context():
                     try:
                         # Call the utility function directly with unpacked parameters
                         process_pdf_util(**params)
+                        current_app.logger.info(f"PDF processing completed for task {params['task_id']}")
                     except Exception as e:
-                        print(f"Error processing PDF: {str(e)}")
+                        current_app.logger.error(f"Error processing PDF: {str(e)}")
                         update_progress(params['task_id'], status='error', error=str(e), progress=0)
             
             # Start processing in a background thread
@@ -108,6 +118,7 @@ def process_file():
             thread.daemon = True
             thread.start()
             
+            current_app.logger.info(f"Started background processing for task {task_id}")
             return jsonify({"task_id": task_id}), 202
             
         return jsonify({"error": "Invalid file type"}), 400
@@ -118,10 +129,34 @@ def process_file():
 
 @bp.route('/progress/<task_id>')
 def progress(task_id):
-    data = get_progress(task_id)
-    if data:
-        return jsonify(data)
-    return jsonify({'status': 'Unknown Task'}), 404
+    try:
+        current_app.logger.info(f"Checking progress for task {task_id}")
+        
+        # Get the current app object for potential background context creation
+        app = current_app._get_current_object()
+        
+        # Get progress data with better error handling
+        data = get_progress(task_id)
+        
+        if data:
+            current_app.logger.debug(f"Progress data for task {task_id}: {data}")
+            return jsonify(data)
+        
+        current_app.logger.warning(f"No progress data found for task {task_id}")
+        return jsonify({
+            'status': 'Unknown Task', 
+            'error': 'Task not found in database',
+            'task_id': task_id
+        }), 404
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        current_app.logger.error(f"Error checking progress for task {task_id}: {str(e)}\n{error_details}")
+        return jsonify({
+            'status': 'error', 
+            'error': str(e),
+            'task_id': task_id
+        }), 500
 
 @bp.route('/download/<task_id>')
 @login_required
@@ -335,14 +370,32 @@ def webhook():
 def terms():
     return render_template('terms.html')
 
-@bp.route('/clear-users')
+@bp.route('/clear-users', methods=['GET', 'POST'])
+@login_required
 def clear_users():
-    if os.environ.get('FLASK_ENV') == 'development':
-        from app.models.user import User
-        User.query.delete()
-        db.session.commit()
-        return 'Users cleared'
-    return 'Not allowed in production'
+    """Admin route to clear all users (development only)"""
+    # Only allow in development mode and for admin users
+    if not (os.environ.get('FLASK_ENV') == 'development' or current_user.email == 'admin@example.com'):
+        abort(403, "Unauthorized access")
+    
+    if request.method == 'POST':
+        confirmation = request.form.get('confirmation')
+        if confirmation == 'DELETE_ALL_USERS':
+            try:
+                # Delete all users except the current one
+                User.query.filter(User.id != current_user.id).delete()
+                db.session.commit()
+                flash('All users except your account have been deleted.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Error deleting users: {str(e)}")
+                flash(f'Error deleting users: {str(e)}', 'error')
+        else:
+            flash('Incorrect confirmation text. Users were not deleted.', 'error')
+    
+    # Count users
+    user_count = User.query.count()
+    return render_template('admin/clear_users.html', user_count=user_count)
 
 @bp.route('/dashboard')
 @login_required
@@ -351,3 +404,14 @@ def dashboard():
     return render_template('dashboard.html', 
                           user=current_user,
                           credit_packages=CREDIT_PACKAGES)
+
+@bp.route('/admin/users')
+@login_required
+def admin_users():
+    """Admin route to view all registered users"""
+    # Simple security check - only allow admin or in development mode
+    if not (os.environ.get('FLASK_ENV') == 'development' or current_user.email == 'admin@example.com'):
+        abort(403, "Unauthorized access")
+        
+    users = User.query.all()
+    return render_template('admin/users.html', users=users)

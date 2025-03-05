@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block meta_tags %}
+<title>Admin - User Management | DocEcho</title>
+<meta name="description" content="Admin panel for managing users">
+{% endblock %}
+
+{% block head %}
+<style>
+    .admin-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+    
+    .admin-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+    }
+    
+    .admin-title {
+        font-size: 2rem;
+        color: var(--primary-color);
+    }
+    
+    .user-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+    }
+    
+    .user-table th,
+    .user-table td {
+        padding: 1rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .user-table th {
+        background-color: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+    
+    .user-table tr:hover {
+        background-color: var(--bg-hover);
+    }
+    
+    .badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    
+    .badge-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .badge-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .badge-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: var(--text-secondary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="admin-header">
+        <h1 class="admin-title">User Management</h1>
+    </div>
+    
+    {% if users %}
+    <table class="user-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Email</th>
+                <th>Credits</th>
+                <th>Verified</th>
+                <th>Created</th>
+                <th>Subscription</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.credits }}</td>
+                <td>
+                    {% if user.email_verified %}
+                    <span class="badge badge-success">Verified</span>
+                    {% else %}
+                    <span class="badge badge-warning">Pending</span>
+                    {% endif %}
+                </td>
+                <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                <td>{{ user.subscription_tier }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No users found in the database.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %} 
