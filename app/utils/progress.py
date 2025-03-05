@@ -1,26 +1,39 @@
-import redis
 import json
-import os
-
-# Initialize Redis client
-redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-redis_client = redis.from_url(redis_url)
+from app.extensions import db
+from app.models.task_progress import TaskProgress
+from datetime import datetime, timedelta
 
 def set_progress(task_id, data):
-    """Store progress data in Redis"""
-    redis_client.setex(f"progress:{task_id}", 3600, json.dumps(data))  # Expires in 1 hour
+    """Store progress data in database"""
+    task = TaskProgress.query.get(task_id)
+    if task:
+        task.data = json.dumps(data)
+        task.expires_at = datetime.utcnow() + timedelta(hours=1)
+    else:
+        task = TaskProgress(
+            task_id=task_id,
+            data=json.dumps(data),
+            expires_at=datetime.utcnow() + timedelta(hours=1)
+        )
+    db.session.add(task)
+    db.session.commit()
 
 def get_progress(task_id):
-    """Get progress data from Redis"""
-    data = redis_client.get(f"progress:{task_id}")
-    return json.loads(data) if data else None
+    """Get progress data from database"""
+    task = TaskProgress.query.get(task_id)
+    if task and not task.is_expired:
+        return json.loads(task.data)
+    return None
 
 def delete_progress(task_id):
-    """Delete progress data from Redis"""
-    redis_client.delete(f"progress:{task_id}")
+    """Delete progress data from database"""
+    task = TaskProgress.query.get(task_id)
+    if task:
+        db.session.delete(task)
+        db.session.commit()
 
 def update_progress(task_id, status=None, progress=None, error=None, **kwargs):
-    """Update progress data in Redis"""
+    """Update progress data in database"""
     data = get_progress(task_id) or {}
     
     if status is not None:

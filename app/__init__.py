@@ -3,14 +3,29 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
 import shutil
-import redis
 from flask_migrate import Migrate
 from dotenv import load_dotenv
 from app.config import Config
+import threading
+import time
 
 # Initialize extensions without the app
 db = SQLAlchemy()
 login_manager = LoginManager()
+
+# Background task for cleaning up expired progress records
+def cleanup_expired_progress(app):
+    """Background task to clean up expired progress records"""
+    with app.app_context():
+        from app.models.task_progress import TaskProgress
+        while True:
+            try:
+                TaskProgress.cleanup_expired()
+                app.logger.info("Cleaned up expired progress records")
+            except Exception as e:
+                app.logger.error(f"Error cleaning up expired progress records: {str(e)}")
+            # Sleep for 1 hour
+            time.sleep(3600)
 
 def create_app():
     app = Flask(__name__)
@@ -68,27 +83,6 @@ def create_app():
         TEMP_FOLDER='/opt/data/temp'
     )
     
-    # Configure Redis connection with Render-specific handling
-    if os.environ.get('RENDER') == "true":
-        # Render Redis format: redis://red-<instance_id>:<port>
-        redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-        if not redis_url.startswith(('redis://', 'rediss://')):
-            redis_url = f'redis://{redis_url}'
-    else:
-        # Local development configuration
-        redis_url = 'redis://localhost:6379/0'
-    
-    app.redis = redis.Redis.from_url(redis_url, socket_connect_timeout=5)
-    
-    # Test Redis connection
-    try:
-        app.redis.ping()
-    except redis.ConnectionError:
-        if os.environ.get('RENDER') == "true":
-            raise RuntimeError("Failed to connect to Render Redis. Check your REDIS_URL.")
-        else:
-            raise RuntimeError("Failed to connect to local Redis. Is it running?")
-    
     # Initialize Flask-Migrate
     migrate = Migrate(app, db)
     
@@ -100,6 +94,7 @@ def create_app():
     # Import models after db initialization
     with app.app_context():
         from app.models.user import User
+        from app.models.task_progress import TaskProgress
         
         # Create database tables
         db.create_all()
@@ -122,6 +117,13 @@ def create_app():
             if not os.path.exists(STATIC_FOLDER):
                 app.logger.warning(f"Static directory {STATIC_FOLDER} not found - using fallback")
                 STATIC_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
+    
+    # Start background task for cleaning up expired progress records
+    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        cleanup_thread = threading.Thread(target=cleanup_expired_progress, args=(app,))
+        cleanup_thread.daemon = True
+        cleanup_thread.start()
+        app.logger.info("Started background task for cleaning up expired progress records")
     
     # Add this to force HTTPS in production
     @app.before_request
