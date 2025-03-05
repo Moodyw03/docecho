@@ -24,7 +24,7 @@ def cleanup_expired_progress(app):
                 # Import here to avoid circular imports
                 from app.models.task_progress import TaskProgress
                 
-                # Create a new session for this operation
+                # Use the app's db instance
                 TaskProgress.cleanup_expired()
                 print("Cleaned up expired progress records")
         except Exception as e:
@@ -47,12 +47,14 @@ def create_app():
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
         SENDGRID_API_KEY=os.getenv('SENDGRID_API_KEY'),
         STRIPE_PUBLIC_KEY=os.getenv('STRIPE_PUBLIC_KEY'),
-        STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY')
+        STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY'),
+        STRIPE_WEBHOOK_SECRET=os.getenv('STRIPE_WEBHOOK_SECRET')
     )
     
     # Log configuration for debugging
     print(f"Stripe Public Key configured: {'Yes' if app.config.get('STRIPE_PUBLIC_KEY') else 'No'}")
     print(f"Stripe Secret Key configured: {'Yes' if app.config.get('STRIPE_SECRET_KEY') else 'No'}")
+    print(f"Stripe Webhook Secret configured: {'Yes' if app.config.get('STRIPE_WEBHOOK_SECRET') else 'No'}")
     
     # Configure database
     configure_database(app)

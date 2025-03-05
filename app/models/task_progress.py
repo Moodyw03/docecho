@@ -1,6 +1,7 @@
 from app.extensions import db
 from datetime import datetime, timedelta
 import json
+from flask import current_app
 
 class TaskProgress(db.Model):
     __tablename__ = 'task_progress'
@@ -18,6 +19,10 @@ class TaskProgress(db.Model):
     def cleanup_expired(cls):
         """Delete expired progress records"""
         try:
+            # Ensure we're in an app context
+            if not current_app:
+                raise RuntimeError("No application context found. Make sure this function is called within an app context.")
+                
             # Get current time once to ensure consistency
             now = datetime.utcnow()
             
@@ -26,7 +31,7 @@ class TaskProgress(db.Model):
             
             # Log how many records will be deleted
             if expired_records:
-                print(f"Deleting {len(expired_records)} expired progress records")
+                current_app.logger.info(f"Deleting {len(expired_records)} expired progress records")
                 
                 # Delete records one by one to avoid potential issues
                 for record in expired_records:
@@ -34,10 +39,14 @@ class TaskProgress(db.Model):
                 
                 # Commit the changes
                 db.session.commit()
+                return len(expired_records)
             else:
-                print("No expired progress records found")
+                current_app.logger.info("No expired progress records found")
+                return 0
                 
         except Exception as e:
             # Rollback in case of error
-            db.session.rollback()
-            raise e 
+            if 'db' in locals() and hasattr(db, 'session'):
+                db.session.rollback()
+            current_app.logger.error(f"Error cleaning up expired records: {str(e)}")
+            return 0 

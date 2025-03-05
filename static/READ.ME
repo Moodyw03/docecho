@@ -1,0 +1,124 @@
+# DocEcho
+
+DocEcho is a web application that simplifies PDF document processing by providing translation and audio conversion services. Built with Flask and modern web technologies, it offers a user-friendly interface for document manipulation.
+
+## Features
+
+- **PDF Translation**: Convert PDF documents to different languages
+- **Audio Conversion**: Transform PDF content into audio files
+- **Multiple Language Support**: Support for various languages including:
+  - English (US/UK)
+  - Portuguese
+  - Spanish
+  - French
+  - German
+  - Italian
+  - Chinese (Mandarin)
+  - Japanese
+  - Russian
+
+- **Credit System**: Pay-as-you-go model with different pricing tiers
+- **User Authentication**: Secure login and registration system
+- **Responsive Design**: Works seamlessly across different devices
+
+## Technology Stack
+
+- **Backend**: Flask 2.3.3
+- **Database**: SQLAlchemy, PostgreSQL
+- **Authentication**: Flask-Login
+- **Payment Processing**: Stripe
+- **PDF Processing**: PyPDF2, reportlab
+- **Audio Generation**: gTTS (Google Text-to-Speech)
+- **Email Services**: Flask-Mail, SendGrid
+- **Frontend**: HTML5, CSS3, JavaScript
+- **CSS Framework**: Custom styling with CSS variables
+
+## Installation
+
+1. Clone the repository
+2. Create a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Set up environment variables in `.env`:
+```
+FLASK_APP=run.py
+FLASK_ENV=development
+DATABASE_URL=your_database_url
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_PUBLIC_KEY=your_stripe_public_key
+SECRET_KEY=your_secret_key
+```
+
+5. Initialize the database:
+```bash
+flask db upgrade
+```
+
+6. Run the application:
+```bash
+flask run
+```
+
+## Usage
+
+1. Register for an account or login
+2. Purchase credits through the pricing page
+3. Upload a PDF document
+4. Select desired output format (Audio/PDF/Both)
+5. Choose target language
+6. Adjust speed settings if needed
+7. Process the document
+
+## Pricing Structure
+
+- **Starter Pack**: $10 for 10 credits
+- **Value Pack**: $25 for 45 credits
+- **Pro Pack**: $50 for 100 credits
+
+Credit Usage:
+- 1 credit per PDF page translation
+- 2 credits per audio page conversion
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Authors
+
+- Gabriel Pereira - Initial work and maintenance
+
+## Acknowledgments
+
+- Google Translate API for translation services
+- gTTS for text-to-speech conversion
+- Stripe for payment processing
+
+## Support
+
+For support, email gabbipereira03@gmail.com or create an issue in the repository.
+
+
+
+
+FLASK_APP=run.py
+FLASK_ENV=development
+DATABASE_URL=your_database_url
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_PUBLIC_KEY=your_stripe_public_key
+SECRET_KEY=your_secret_key

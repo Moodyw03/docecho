@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block meta_tags %}
+<title>Payment Successful | DocEcho</title>
+<meta name="description" content="Your payment was successful. Credits will be added to your account shortly.">
+{% endblock %}
+
+{% block head %}
+<style>
+    .success-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+        text-align: center;
+    }
+    
+    .success-icon {
+        font-size: 5rem;
+        color: var(--success-color, #28a745);
+        margin-bottom: 1rem;
+    }
+    
+    .success-title {
+        font-size: 2rem;
+        margin-bottom: 1rem;
+        color: var(--primary-color);
+    }
+    
+    .success-message {
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+        color: var(--text-secondary);
+    }
+    
+    .action-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    
+    .action-button {
+        padding: 0.75rem 1.5rem;
+        border-radius: 5px;
+        text-decoration: none;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .primary-button {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    
+    .primary-button:hover {
+        background-color: var(--primary-hover);
+    }
+    
+    .secondary-button {
+        background-color: transparent;
+        color: var(--primary-color);
+        border: 1px solid var(--primary-color);
+    }
+    
+    .secondary-button:hover {
+        background-color: rgba(var(--primary-color-rgb), 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="success-container">
+    <div class="success-icon">✓</div>
+    <h1 class="success-title">Payment Successful!</h1>
+    <p class="success-message">
+        Thank you for your purchase. Your credits will be added to your account shortly.
+        You can now continue using DocEcho to translate and convert your documents.
+    </p>
+    
+    <div class="action-buttons">
+        <a href="{{ url_for('main.index') }}" class="action-button primary-button">Start Using Your Credits</a>
+        <a href="{{ url_for('main.pricing') }}" class="action-button secondary-button">View Other Plans</a>
+    </div>
+</div>
+{% endblock %} 
