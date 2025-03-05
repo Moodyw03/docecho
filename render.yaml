@@ -8,6 +8,7 @@ services:
     startCommand: |
       # Create directory structure with proper permissions
       mkdir -p /opt/data/{static,uploads,output,temp}
+      mkdir -p app/templates/email
       chmod -R 755 /opt/data
       # Copy static files if empty
       if [ -z "$(ls -A /opt/data/static)" ]; then
@@ -19,16 +20,41 @@ services:
       - key: FLASK_ENV
         value: production
       - key: DATABASE_URL
-        value: postgresql://docechodatabase_user:WCsXQO7Hp0mmz9YpzyCF806BJ5ky7XDx@dpg-cubq1u2n91rc7395ulm0-a/docechodatabase
+        fromDatabase:
+          name: docechodatabase
+          property: connectionString
       - key: SENDGRID_API_KEY
-        value: your_sendgrid_api_key
+        sync: false
+      - key: MAIL_SERVER
+        value: smtp.sendgrid.net
+      - key: MAIL_PORT
+        value: 587
+      - key: MAIL_USERNAME
+        value: apikey
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_USE_TLS
+        value: true
       - key: MAIL_DEFAULT_SENDER
-        value: "Gabbi Pereira <gabbipereira03@gmail.com>"
+        value: gabbipereira03@gmail.com
       - key: JWT_SECRET_KEY
-        value: your_strong_secret_here
+        generateValue: true
       - key: FLASK_SECRET_KEY
-        value: your_flask_secret_key
+        generateValue: true
+      - key: BASE_URL
+        value: https://docecho.onrender.com
+      - key: RENDER
+        value: true
+      - key: STRIPE_PUBLIC_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
     disk:
       name: data
       mountPath: /opt/data
       sizeGB: 1
+
+databases:
+  - name: docechodatabase
+    databaseName: docechodatabase
+    user: docechodatabase_user

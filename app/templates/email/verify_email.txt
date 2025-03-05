@@ -1,0 +1,15 @@
+DocEcho Email Verification
+
+Hello,
+
+Thank you for registering with DocEcho. To complete your registration, please verify your email address by visiting the following link:
+{{ verify_url }}
+
+If you didn't create this account, you can safely ignore this email.
+
+Thank you,
+The DocEcho Team
+
+---
+This is an automated message, please do not reply to this email.
+© {{ year }} DocEcho. All rights reserved. 

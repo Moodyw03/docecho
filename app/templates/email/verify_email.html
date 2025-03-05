@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your DocEcho Account</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #4a6cf7;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .button {
+            display: inline-block;
+            background-color: #4a6cf7;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DocEcho Email Verification</h1>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>Thank you for registering with DocEcho. To complete your registration, please verify your email address by clicking the button below:</p>
+            <p style="text-align: center;">
+                <a href="{{ verify_url }}" class="button">Verify Email</a>
+            </p>
+            <p>Or copy and paste this link into your browser:</p>
+            <p>{{ verify_url }}</p>
+            <p>If you didn't create this account, you can safely ignore this email.</p>
+            <p>Thank you,<br>The DocEcho Team</p>
+        </div>
+        <div class="footer">
+            <p>This is an automated message, please do not reply to this email.</p>
+            <p>&copy; {{ year }} DocEcho. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html> 
