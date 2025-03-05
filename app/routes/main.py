@@ -13,10 +13,6 @@ import copy
 
 bp = Blueprint('main', __name__)
 
-# Configure Stripe
-stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
-STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
-
 # Credit packages
 CREDIT_PACKAGES = {
     'starter': {'price': 10, 'credits': 10},

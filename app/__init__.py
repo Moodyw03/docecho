@@ -45,8 +45,14 @@ def create_app():
     app.config.update(
         JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', 'fallback_secret_for_dev'),
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
-        SENDGRID_API_KEY=os.getenv('SENDGRID_API_KEY')
+        SENDGRID_API_KEY=os.getenv('SENDGRID_API_KEY'),
+        STRIPE_PUBLIC_KEY=os.getenv('STRIPE_PUBLIC_KEY'),
+        STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY')
     )
+    
+    # Log configuration for debugging
+    print(f"Stripe Public Key configured: {'Yes' if app.config.get('STRIPE_PUBLIC_KEY') else 'No'}")
+    print(f"Stripe Secret Key configured: {'Yes' if app.config.get('STRIPE_SECRET_KEY') else 'No'}")
     
     # Configure database
     configure_database(app)
