@@ -36,10 +36,10 @@ primary_region = "lhr"
   destination = "/app/data"
 
 [[vm]]
-  # Increase VM size for better performance - minimum 2GB required for performance-1x
-  size = "performance-1x"
-  memory = "2gb"
-  cpu_kind = "performance"
+  # Use smaller VMs to stay in free tier (up to 3 allowed)
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  cpu_kind = "shared"
 
 [[statics]]
   guest_path = "/app/app/static"
