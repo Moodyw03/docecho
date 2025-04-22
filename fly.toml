@@ -19,6 +19,11 @@ primary_region = "lhr"
   PORT = "8080"
   PYTHONUNBUFFERED = "1"
   FLY_APP_NAME = "docecho"
+  # Use synchronous workers to prevent database connection issues
+  GUNICORN_WORKERS = "2"
+  GUNICORN_THREADS = "4"
+  # Increase timeouts for API calls
+  GUNICORN_TIMEOUT = "300"
 
 [build]
   dockerfile = "Dockerfile"
@@ -31,8 +36,10 @@ primary_region = "lhr"
   destination = "/app/data"
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
+  # Increase VM size for better performance - minimum 2GB required for performance-1x
+  size = "performance-1x"
+  memory = "2gb"
+  cpu_kind = "performance"
 
 [[statics]]
   guest_path = "/app/app/static"

@@ -122,7 +122,42 @@ You can also connect directly to the PostgreSQL database:
    fly postgres connect -a docecho-db
    ```
 
-2. Then run the SQL commands as in Method 4 above.
+2. Switch to the "docecho" database:
+
+   ```sql
+   \c docecho
+   ```
+
+3. Verify the users table exists:
+
+   ```sql
+   \dt
+   ```
+
+   This should show the users table in the public schema.
+
+4. Check if the user exists and view current credits:
+
+   ```sql
+   SELECT id, email, credits FROM public.users WHERE email = 'user@example.com';
+   ```
+
+   Note: Using the full schema name `public.users` is recommended to avoid ambiguity.
+
+5. Add credits to an existing user:
+
+   ```sql
+   UPDATE public.users
+   SET credits = credits + 30
+   WHERE email = 'user@example.com'
+   RETURNING id, email, credits - 30 as old_credits, credits as new_credits;
+   ```
+
+6. After updating credits, restart the application to ensure changes are reflected:
+
+   ```bash
+   fly apps restart docecho
+   ```
 
 ## Troubleshooting
 
@@ -131,7 +166,7 @@ If credits are added successfully but don't appear in the application:
 1. Verify the database update was successful:
 
    ```sql
-   SELECT id, email, credits FROM users WHERE email = 'user@example.com';
+   SELECT id, email, credits FROM public.users WHERE email = 'user@example.com';
    ```
 
 2. Try these troubleshooting steps:
@@ -143,7 +178,13 @@ If credits are added successfully but don't appear in the application:
      fly apps restart docecho
      ```
 
-3. If credits still don't appear, check for caching mechanisms in the application:
+3. If you encounter "relation does not exist" errors:
+
+   - Check that you're connected to the correct database (`\c docecho`)
+   - Verify table existence with `\dt`
+   - Use the full schema reference (`public.users`) in your queries
+
+4. If credits still don't appear, check for caching mechanisms in the application:
 
    ```bash
    fly ssh console -a docecho
@@ -151,7 +192,7 @@ If credits are added successfully but don't appear in the application:
    grep -r "cache" .
    ```
 
-4. Ensure the dashboard route is fetching fresh user data each time:
+5. Ensure the dashboard route is fetching fresh user data each time:
    ```bash
    grep -r "dashboard" app/routes/
    ```

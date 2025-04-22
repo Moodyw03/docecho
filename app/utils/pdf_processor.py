@@ -8,6 +8,9 @@ from app.utils.progress import update_progress
 import os
 import gc
 import time
+import threading
+import concurrent.futures
+import requests
 
 # Mapping language codes and TLDs for accents
 language_map = {
@@ -23,7 +26,8 @@ language_map = {
     "ru": {"lang": "ru", "tld": "ru"}
 }
 
-def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=400):
+# Smaller chunk size for better processing
+def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=200):
     try:
         reader = PdfReader(pdf_path)
         chunks = []
@@ -31,9 +35,8 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=400):
         
         total_pages = len(reader.pages)
         for page_num, page in enumerate(reader.pages):
-            # More frequent garbage collection
-            if page_num % 2 == 0:  # Every 2 pages instead of 10
-                gc.collect()
+            # Garbage collection on every page
+            gc.collect()
             
             page_text = page.extract_text()
             if not page_text:
@@ -49,8 +52,9 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=400):
                 else:
                     current_chunk += sentence + '. '
             
-            # Free up memory from page
+            # Free up memory from page immediately
             page = None
+            gc.collect()
                     
         if current_chunk:
             chunks.append(current_chunk.strip())
@@ -71,8 +75,18 @@ def convert_text_to_audio(text, output_filename, voice, speed, tld='com'):
         temp_output = os.path.join(temp_dir, output_filename.replace(".mp3", "_temp.mp3"))
         output_path = os.path.join(temp_dir, output_filename)
         
-        tts = gTTS(text, lang=voice, tld=tld)
-        tts.save(temp_output)
+        # Add timeout/retry logic for gTTS
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                tts = gTTS(text, lang=voice, tld=tld)
+                tts.save(temp_output)
+                break
+            except (requests.exceptions.RequestException, Exception) as e:
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # Wait before retry
+                    continue
+                raise Exception(f"Failed to generate audio after {max_retries} attempts: {e}")
 
         if speed != 1.0:
             sound = AudioSegment.from_file(temp_output)
@@ -135,6 +149,31 @@ def create_translated_pdf(text, output_path, language_code='en'):
     except Exception as e:
         raise Exception(f"Error creating PDF: {str(e)}")
 
+# Helper function for translation with timeout
+def translate_with_timeout(translator, text, dest, timeout=10):
+    result = None
+    error = None
+    
+    def translate_task():
+        nonlocal result, error
+        try:
+            result = translator.translate(text, dest=dest).text
+        except Exception as e:
+            error = e
+    
+    thread = threading.Thread(target=translate_task)
+    thread.daemon = True
+    thread.start()
+    thread.join(timeout)
+    
+    if thread.is_alive():
+        return None, TimeoutError("Translation timed out")
+    
+    if error:
+        return None, error
+        
+    return result, None
+
 def process_pdf(filename, file_path, voice, speed, task_id, output_format, output_path):
     try:
         # Force garbage collection at start
@@ -153,9 +192,10 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
         if total_chunks == 0:
             raise Exception("No text could be extracted from the PDF")
 
+        # Use the original translator
         translator = Translator()
-        # Reduce batch size from 10 to 5 for memory optimization
-        batch_size = 5
+        # Reduce batch size for better memory management
+        batch_size = 2
         audio_chunks = []
         translated_text = []
         
@@ -188,18 +228,30 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
 
                 try:
                     # Add delay to avoid API rate limits
-                    time.sleep(0.5)
+                    time.sleep(1)  # Increased from 0.5
                     
-                    # Catch and handle timeout for translate API
-                    try:
-                        translated_chunk = translator.translate(chunk, dest=lang_settings["lang"]).text
-                        # Add extra timeout after the last chunk translation
-                        if is_last_chunk:
-                            time.sleep(1)  # Extra delay for last chunk
-                    except Exception as translate_error:
-                        print(f"Translation error: {str(translate_error)}")
+                    # Use the timeout version of translate
+                    translated_chunk, error = translate_with_timeout(
+                        translator, 
+                        chunk, 
+                        lang_settings["lang"],
+                        timeout=15  # 15 second timeout for translation
+                    )
+                    
+                    # Handle translation error/timeout
+                    if error:
+                        print(f"Translation error: {str(error)}")
                         # Fallback for translation failure
                         translated_chunk = chunk  # Use original text as fallback
+                        update_progress(
+                            task_id,
+                            status=f'Warning: Using original text for chunk {batch_start + i + 1} (translation failed)',
+                            progress=overall_progress
+                        )
+                    
+                    # Add extra timeout after the last chunk translation
+                    if is_last_chunk:
+                        time.sleep(1)  # Extra delay for last chunk
                     
                     translated_text.append(translated_chunk)
                     
@@ -208,7 +260,7 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                     
                     if output_format in ["audio", "both"]:
                         # Add delay to avoid gTTS API rate limits
-                        time.sleep(0.5)
+                        time.sleep(1)  # Increased from 0.5
                         
                         chunk_filename = f"{task_id}_chunk_{batch_start + i}.mp3"
                         
@@ -230,14 +282,18 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                         except Exception as audio_error:
                             print(f"Audio conversion error: {str(audio_error)}")
                             # Continue without this audio chunk
+                            update_progress(
+                                task_id,
+                                status=f'Warning: Skipped audio for chunk {batch_start + i + 1} due to error',
+                                progress=overall_progress
+                            )
                             continue
                         
                         # Clear the translated chunk to free memory
                         translated_chunk = None
                         
                         # Garbage collection after each audio processing
-                        if (i + 1) % 2 == 0 or is_last_chunk:
-                            gc.collect()
+                        gc.collect()
 
                 except Exception as e:
                     # Log error but continue
@@ -249,7 +305,7 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                         progress=overall_progress
                     )
                     # Add delay before continuing to next chunk
-                    time.sleep(1)
+                    time.sleep(2)  # Increased from 1
                     continue
             
             # Clean up batch to free memory
@@ -262,6 +318,9 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                 status=f'Completed batch {batch_end}/{total_chunks}',
                 progress=int((batch_end / total_chunks) * 100)
             )
+            
+            # Add a small delay between batches to prevent API overload
+            time.sleep(2)
 
         # Handle PDF output
         if output_format in ["pdf", "both"]:

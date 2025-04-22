@@ -1,8 +1,11 @@
 # Use an official Python image as a base
 FROM python:3.9-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
+# Install system dependencies - add curl for health checks and ca-certificates for SSL
+RUN apt-get update && apt-get install -y ffmpeg curl ca-certificates && apt-get clean
+
+# Create a non-root user to run the application
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Set working directory in the container
 WORKDIR /app
@@ -16,8 +19,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code to the container
 COPY . /app/
 
+# Create necessary directories and set permissions
+RUN mkdir -p /app/app/static/uploads /app/app/static/output /app/app/static/progress /app/app/static/temp /app/data \
+    && chown -R appuser:appuser /app
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV FLASK_APP=app.py
 
-# Start the app using gunicorn
-CMD ["gunicorn", "wsgi:app", "--bind", "0.0.0.0:8080"]
+# Switch to non-root user
+USER appuser
+
+# Start the app using gunicorn with config file
+CMD ["gunicorn", "--config", "gunicorn_config.py", "wsgi:app"]

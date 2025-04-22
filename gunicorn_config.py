@@ -2,12 +2,16 @@ import multiprocessing
 import os
 
 # Gunicorn configuration for production
-bind = f"0.0.0.0:{os.getenv('PORT', '10000')}"
-workers = multiprocessing.cpu_count() * 2 + 1
-threads = 2
-timeout = 120
+bind = f"0.0.0.0:{os.getenv('PORT', '8080')}"
+
+# Use environment variables if set, otherwise use defaults
+workers = int(os.getenv('GUNICORN_WORKERS', '2'))
+threads = int(os.getenv('GUNICORN_THREADS', '4'))
+timeout = int(os.getenv('GUNICORN_TIMEOUT', '300'))
+
+# Keep these settings for better stability
 keepalive = 5
-max_requests = 1000
+max_requests = 500
 max_requests_jitter = 50
 worker_class = 'sync'
 
@@ -23,5 +27,9 @@ loglevel = 'info'
 # Worker process name
 proc_name = 'docecho'
 
-# Preload application code
-preload_app = True
+# Preload application code - disable for better reliability
+preload_app = False
+
+# Worker settings for better memory management
+worker_tmp_dir = '/dev/shm'
+forwarded_allow_ips = '*'
