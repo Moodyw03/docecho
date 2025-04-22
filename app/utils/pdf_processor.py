@@ -6,6 +6,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from app.utils.progress import update_progress
 import os
+import gc
+import time
 
 # Mapping language codes and TLDs for accents
 language_map = {
@@ -21,7 +23,7 @@ language_map = {
     "ru": {"lang": "ru", "tld": "ru"}
 }
 
-def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=500):
+def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=400):
     try:
         reader = PdfReader(pdf_path)
         chunks = []
@@ -29,8 +31,8 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=500):
         
         total_pages = len(reader.pages)
         for page_num, page in enumerate(reader.pages):
-            if page_num % 10 == 0:
-                import gc
+            # More frequent garbage collection
+            if page_num % 2 == 0:  # Every 2 pages instead of 10
                 gc.collect()
             
             page_text = page.extract_text()
@@ -46,9 +48,16 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=500):
                     current_chunk = sentence + '. '
                 else:
                     current_chunk += sentence + '. '
+            
+            # Free up memory from page
+            page = None
                     
         if current_chunk:
             chunks.append(current_chunk.strip())
+        
+        # Help garbage collector
+        reader = None
+        gc.collect()
             
         return chunks
     except Exception as e:
@@ -128,8 +137,11 @@ def create_translated_pdf(text, output_path, language_code='en'):
 
 def process_pdf(filename, file_path, voice, speed, task_id, output_format, output_path):
     try:
+        # Force garbage collection at start
+        gc.collect()
+        
         # Create temp and output directories
-        output_dir = os.path.dirname(output_path)  # Get the output directory from the audio path
+        output_dir = os.path.dirname(output_path)
         temp_dir = os.path.join(output_dir, 'temp')
         os.makedirs(temp_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
@@ -142,13 +154,17 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
             raise Exception("No text could be extracted from the PDF")
 
         translator = Translator()
-        batch_size = 10
+        # Reduce batch size from 10 to 5 for memory optimization
+        batch_size = 5
         audio_chunks = []
         translated_text = []
         
         lang_settings = language_map.get(voice, {"lang": "en", "tld": "com"})
         
         for batch_start in range(0, total_chunks, batch_size):
+            # Garbage collection between batches
+            gc.collect()
+            
             batch_end = min(batch_start + batch_size, total_chunks)
             batch = text_chunks[batch_start:batch_end]
             
@@ -161,10 +177,19 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                 )
 
                 try:
+                    # Add delay to avoid API rate limits
+                    time.sleep(0.5)
+                    
                     translated_chunk = translator.translate(chunk, dest=lang_settings["lang"]).text
                     translated_text.append(translated_chunk)
                     
+                    # Clear the original chunk from memory
+                    chunk = None
+                    
                     if output_format in ["audio", "both"]:
+                        # Add delay to avoid gTTS API rate limits
+                        time.sleep(0.5)
+                        
                         chunk_filename = f"{task_id}_chunk_{batch_start + i}.mp3"
                         audio_chunk_path = convert_text_to_audio(
                             translated_chunk,
@@ -174,12 +199,28 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                             lang_settings["tld"]
                         )
                         audio_chunks.append(audio_chunk_path)
+                        
+                        # Clear the translated chunk to free memory
+                        translated_chunk = None
+                        
+                        # Garbage collection after each audio processing
+                        if (i + 1) % 2 == 0:
+                            gc.collect()
 
                 except Exception as e:
+                    # Log error but continue
+                    print(f"Error processing chunk: {str(e)}")
                     continue
+            
+            # Clean up batch to free memory
+            batch = None
+            gc.collect()
 
         # Handle PDF output
         if output_format in ["pdf", "both"]:
+            # Free up some memory before PDF generation
+            gc.collect()
+            
             base_filename = os.path.splitext(os.path.basename(filename))[0]
             pdf_filename = f"{base_filename}_translated_{task_id}.pdf"
             pdf_path = os.path.join(output_dir, pdf_filename)
@@ -196,6 +237,9 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
             
         # Handle audio output
         if audio_chunks and output_format in ["audio", "both"]:
+            # Free up memory before audio concatenation
+            gc.collect()
+            
             concatenate_audio_files(audio_chunks, output_path)
             
             # Always update with audio path first
@@ -215,6 +259,9 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
             for chunk in audio_chunks:
                 if os.path.exists(chunk):
                     os.remove(chunk)
+                    
+        # Final garbage collection
+        gc.collect()
 
     except Exception as e:
         update_progress(task_id, status='error', error=str(e), progress=0)
