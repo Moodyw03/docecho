@@ -1,8 +1,8 @@
 import json
-from app.extensions import db
+from app.extensions import db, get_db
 from app.models.task_progress import TaskProgress
 from datetime import datetime, timedelta
-from flask import current_app
+from flask import current_app, has_app_context
 import traceback
 import os
 import time
@@ -19,7 +19,7 @@ logger = logging.getLogger('progress_tracker')
 def _get_progress_file_path(task_id):
     """Get the file path for storing progress data"""
     try:
-        if current_app:
+        if has_app_context():
             app_root = current_app.root_path
         else:
             # Fallback if no app context
@@ -116,7 +116,7 @@ def set_progress(task_id, data):
     """Store progress data in database with file fallback"""
     try:
         # Ensure we're in an app context
-        if not current_app:
+        if not has_app_context():
             logger.info("No application context found. Creating a new app context.")
             from app import create_app
             app = create_app()
@@ -140,7 +140,9 @@ def _set_progress_internal(task_id, data):
     
     while retry_count < max_retries:
         try:
-            # Use the existing session with proper context management
+            # Get the proper database instance
+            database = get_db()
+            
             # Check if task exists
             task = TaskProgress.query.filter_by(task_id=task_id).first()
             
@@ -154,17 +156,17 @@ def _set_progress_internal(task_id, data):
                     data=json.dumps(data),
                     expires_at=datetime.utcnow() + timedelta(hours=1)
                 )
-                db.session.add(task)
+                database.session.add(task)
             
             # Commit changes
-            db.session.commit()
+            database.session.commit()
             logger.info(f"Progress data saved to database for task {task_id}")
             return True
         except Exception as e:
             retry_count += 1
             logger.warning(f"Database error on attempt {retry_count}/{max_retries}: {str(e)}")
             try:
-                db.session.rollback()
+                database.session.rollback()
                 time.sleep(0.5)  # Brief pause before retry
             except:
                 pass
@@ -181,7 +183,7 @@ def get_progress(task_id):
         file_data = _load_progress_from_file(task_id)
         
         # Ensure we're in an app context for DB access
-        if not current_app:
+        if not has_app_context():
             logger.info("No application context found. Creating a new app context.")
             from app import create_app
             app = create_app()
@@ -213,6 +215,9 @@ def _get_progress_internal(task_id):
     
     while retry_count < max_retries:
         try:
+            # Get the proper database instance
+            database = get_db()
+            
             # Use filter_by instead of get for more explicit querying
             task = TaskProgress.query.filter_by(task_id=task_id).first()
             
@@ -242,7 +247,7 @@ def delete_progress(task_id):
         _delete_progress_file(task_id)
         
         # Ensure we're in an app context
-        if not current_app:
+        if not has_app_context():
             logger.info("No application context found. Creating a new app context.")
             from app import create_app
             app = create_app()
@@ -263,12 +268,15 @@ def _delete_progress_internal(task_id):
     
     while retry_count < max_retries:
         try:
+            # Get the proper database instance
+            database = get_db()
+            
             # Use the existing session with proper context management
             task = TaskProgress.query.filter_by(task_id=task_id).first()
             
             if task:
-                db.session.delete(task)
-                db.session.commit()
+                database.session.delete(task)
+                database.session.commit()
                 logger.info(f"Progress data deleted from database for task {task_id}")
                 # Also delete any file-based backup
                 _delete_progress_file(task_id)
@@ -281,7 +289,7 @@ def _delete_progress_internal(task_id):
             logger.warning(f"Database error on attempt {retry_count}/{max_retries}: {str(e)}")
             
             try:
-                db.session.rollback()
+                database.session.rollback()
                 time.sleep(0.5)  # Brief pause before retry
             except:
                 pass

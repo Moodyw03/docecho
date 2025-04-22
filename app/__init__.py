@@ -9,7 +9,7 @@ from app.config import Config
 import threading
 import time
 import copy
-from app.extensions import db, login_manager, mail
+from app.extensions import db, login_manager, mail, init_db
 
 # Initialize extensions without the app
 db = SQLAlchemy()
@@ -65,8 +65,8 @@ def create_app():
     # Set up static folders
     configure_static_folders(app)
     
-    # Initialize extensions - IMPORTANT: Initialize db before other extensions
-    db.init_app(app)
+    # Initialize extensions - IMPORTANT: Initialize db first before other extensions
+    init_db(app)  # Use the init_db function from extensions.py
     
     # Create progress directory
     with app.app_context():
@@ -133,12 +133,16 @@ def configure_database(app):
     
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-        'pool_size': 20,
-        'max_overflow': 0
-    }
+    
+    # Only set these for PostgreSQL connections
+    if database_url.startswith('postgresql'):
+        print("Configuring PostgreSQL connection pool")
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_pre_ping': True,
+            'pool_recycle': 300,
+            'pool_size': 5,
+            'max_overflow': 10
+        }
 
 def configure_static_folders(app):
     """Configure static, upload, output, and temp folders"""
