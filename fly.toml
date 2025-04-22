@@ -1,0 +1,39 @@
+# fly.toml app configuration file generated for docecho on 2025-04-22T09:21:47+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "docecho"
+primary_region = "lhr"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[env]
+  FLASK_ENV = "production"
+  PORT = "8080"
+  PYTHONUNBUFFERED = "1"
+  FLY_APP_NAME = "docecho"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "flask db upgrade"
+
+[mounts]
+  source = "docecho_data"
+  destination = "/app/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[[statics]]
+  guest_path = "/app/app/static"
+  url_prefix = "/static"

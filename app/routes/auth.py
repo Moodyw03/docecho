@@ -66,7 +66,7 @@ def register():
             
             # Simplify email sending flow
             try:
-                send_verification_email(new_user)
+                send_verification_email(new_user, token)
                 session['unverified_email'] = new_user.email
                 flash('Registration successful! Please check your email to verify your account.', 'success')
                 return redirect(url_for('auth.login'))
@@ -102,7 +102,7 @@ def logout():
     flash('You have been logged out.')
     return redirect(url_for('main.index'))
 
-@bp.route('/verify-email/<token>')
+@bp.route('/verify/<token>')
 def verify_email(token):
     try:
         payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])

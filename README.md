@@ -97,7 +97,40 @@ The application uses SendGrid for sending verification and password reset emails
 
 ### Production Deployment
 
-The application is configured for deployment on Render.com with the included `render.yaml` file. It uses PostgreSQL for the database and sets up the necessary environment variables.
+The application is configured for deployment on Fly.io with the included `fly.toml` file. It uses PostgreSQL for the database and sets up the necessary environment variables. See `DEPLOYMENT_FLY.md` for detailed deployment instructions.
+
+## Deployment
+
+### Fly.io Deployment
+
+The application is configured for deployment on [Fly.io](https://fly.io/). For a complete step-by-step guide, please refer to the [DEPLOYMENT_FLY.md](DEPLOYMENT_FLY.md) file, which includes:
+
+- Installing the Fly.io CLI
+- Authenticating with Fly.io
+- Setting up a PostgreSQL database
+- Initializing and deploying your application
+- Creating persistent storage volumes
+- Setting required environment variables
+- Managing and scaling your deployment
+- Troubleshooting common issues
+
+### Environment Variables for Production
+
+For production deployment on Fly.io, you'll need to set the following environment variables:
+
+- `FLASK_ENV=production`
+- `FLASK_SECRET_KEY=<your-secure-random-key>`
+- `DATABASE_URL=<your-database-url>` (Set automatically when using Fly Postgres)
+- `MAIL_SERVER=smtp.sendgrid.net`
+- `MAIL_PORT=587`
+- `MAIL_USERNAME=apikey`
+- `MAIL_PASSWORD=<your-sendgrid-api-key>`
+- `MAIL_DEFAULT_SENDER=<your-verified-email>`
+- `MAIL_USE_TLS=true`
+- `GOOGLE_APPLICATION_CREDENTIALS=credentials.json`
+- `FRONTEND_URL=https://<your-app-name>.fly.dev`
+
+These can be set using the `fly secrets set` command as detailed in the deployment guide.
 
 ## Usage
 

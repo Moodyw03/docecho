@@ -27,3 +27,7 @@ temp/
 Thumbs.dbsendgrid.env
 sendgrid.env
 .env
+
+# Fly.io 
+.dockerignore
+.fly/

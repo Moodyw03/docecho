@@ -20,4 +20,4 @@ COPY . /app/
 ENV PYTHONUNBUFFERED=1
 
 # Start the app using gunicorn
-CMD ["gunicorn", "-b", "0.0.0.0:$PORT", "app:app"]
+CMD ["gunicorn", "wsgi:app", "--bind", "0.0.0.0:8080"]

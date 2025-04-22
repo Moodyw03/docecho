@@ -10,10 +10,11 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     
     # Upload paths
-    if os.environ.get('RENDER') == "true":
-        UPLOAD_FOLDER = '/opt/data/uploads'
-        OUTPUT_FOLDER = '/opt/data/output'
-        TEMP_FOLDER = '/opt/data/temp'
+    if os.environ.get('FLY_APP_NAME'):
+        # Fly.io environment
+        UPLOAD_FOLDER = '/app/data/uploads'
+        OUTPUT_FOLDER = '/app/data/output'
+        TEMP_FOLDER = '/app/data/temp'
     else:
         UPLOAD_FOLDER = 'uploads'
         OUTPUT_FOLDER = 'output'

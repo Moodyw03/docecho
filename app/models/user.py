@@ -2,8 +2,10 @@ from flask_login import UserMixin
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
 from sqlalchemy.orm import declarative_base
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timedelta
 from app import db, login_manager
+import jwt
+from flask import current_app
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -28,6 +30,14 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
     def set_verification_token(self, token=None):
+        if token is None:
+            # Generate a token if none is provided
+            payload = {
+                'user_id': self.id,
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            }
+            token = jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+            
         self.uq_verification_token = token
         db.session.commit()
         return token

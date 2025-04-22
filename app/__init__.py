@@ -111,7 +111,7 @@ def configure_database(app):
     database_url = os.getenv('DATABASE_URL')
     
     if not database_url:
-        if os.environ.get('RENDER') == "true":
+        if os.environ.get('FLY_APP_NAME'):
             raise ValueError("DATABASE_URL environment variable is required in production")
         # Local development fallback
         database_url = 'sqlite:///instance/app.db'
@@ -120,6 +120,16 @@ def configure_database(app):
     # Convert postgres:// to postgresql:// for SQLAlchemy 1.4+
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # Log database connection info (without credentials)
+    masked_url = database_url
+    if '@' in database_url:
+        parts = database_url.split('@')
+        auth_parts = parts[0].split(':')
+        if len(auth_parts) > 2:
+            # Hide password
+            masked_url = f"{auth_parts[0]}:****@{parts[1]}"
+    print(f"Connecting to database: {masked_url}")
     
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -132,27 +142,29 @@ def configure_database(app):
 
 def configure_static_folders(app):
     """Configure static, upload, output, and temp folders"""
-    if os.environ.get('RENDER') == "true":
-        STATIC_FOLDER = '/opt/data/static'
+    if os.environ.get('FLY_APP_NAME'):
+        # Fly.io environment
+        STATIC_FOLDER = '/app/data/static'
     else:
         STATIC_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
     
     app.static_folder = STATIC_FOLDER
     app.config.update(
-        UPLOAD_FOLDER='/opt/data/uploads',
-        OUTPUT_FOLDER='/opt/data/output',
-        TEMP_FOLDER='/opt/data/temp'
+        UPLOAD_FOLDER=os.environ.get('UPLOAD_FOLDER', app.config.get('UPLOAD_FOLDER')),
+        OUTPUT_FOLDER=os.environ.get('OUTPUT_FOLDER', app.config.get('OUTPUT_FOLDER')),
+        TEMP_FOLDER=os.environ.get('TEMP_FOLDER', app.config.get('TEMP_FOLDER'))
     )
     
-    # Handle static files for Render environment
-    if os.environ.get('RENDER') == "true":
+    # Handle static files for Fly.io environment
+    if os.environ.get('FLY_APP_NAME'):
         try:
             os.makedirs(STATIC_FOLDER, exist_ok=True)
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+            os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
         except Exception as e:
-            app.logger.error(f"Static directory creation failed: {str(e)}")
-        
-        if not os.path.exists(STATIC_FOLDER):
-            app.logger.warning(f"Static directory {STATIC_FOLDER} not found - using fallback")
+            app.logger.error(f"Directory creation failed: {str(e)}")
+            # Fallback to app directory
             app.static_folder = os.path.join(os.path.dirname(__file__), 'static')
 
 def register_blueprints_and_models(app):
