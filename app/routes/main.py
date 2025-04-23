@@ -185,6 +185,11 @@ def progress(task_id):
 @login_required
 def download(task_id):
     try:
+        # Log basic request information for debugging
+        current_app.logger.info(f"Download request received for task {task_id}")
+        current_app.logger.info(f"Request headers: {dict(request.headers)}")
+        current_app.logger.info(f"Request args: {dict(request.args)}")
+        
         data = get_progress(task_id)
         current_app.logger.info(f"Download request for task {task_id}. Progress data: {data}")
         
@@ -228,11 +233,20 @@ def download(task_id):
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"{file_type.upper()} file not found")
 
+        # Log file details
+        file_size = os.path.getsize(file_path)
+        current_app.logger.info(f"Sending file: {file_path}, size: {file_size} bytes")
+        
+        # Create a unique filename for the download to prevent caching issues
+        original_filename = os.path.basename(file_path)
+        download_filename = f"{os.path.splitext(original_filename)[0]}_{task_id[:6]}{os.path.splitext(original_filename)[1]}"
+        current_app.logger.info(f"Using download filename: {download_filename}")
+
         response = send_file(
             file_path,
             mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf',
             as_attachment=True,
-            download_name=os.path.basename(file_path),
+            download_name=download_filename,
             conditional=True  # Add conditional sending
         )
         
@@ -240,6 +254,9 @@ def download(task_id):
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
+        
+        # Log all response headers for debugging
+        current_app.logger.info(f"Response headers: {dict(response.headers)}")
         
         # Only delete progress if both files have been downloaded
         if request.args.get('final') == 'true':
@@ -456,3 +473,54 @@ def admin_users():
         
     users = User.query.all()
     return render_template('admin/users.html', users=users)
+
+@bp.route('/downloads/<task_id>')
+@login_required
+def download_page(task_id):
+    """
+    Display a page with direct download links when automatic download doesn't work
+    """
+    try:
+        data = get_progress(task_id)
+        current_app.logger.info(f"Download page request for task {task_id}. Progress data: {data}")
+        
+        if not data:
+            flash("Task not found or has expired", "error")
+            return redirect(url_for('main.index'))
+            
+        if data.get('status') != 'completed' and not data.get('status', '').startswith('Warning'):
+            flash("Files are still being processed. Please wait until they're ready.", "warning")
+            return redirect(url_for('main.index'))
+        
+        # Prepare download links
+        download_links = {}
+        
+        if 'audio_file' in data:
+            audio_path = data['audio_file']
+            if os.path.exists(audio_path):
+                download_links['audio'] = {
+                    'url': url_for('main.download', task_id=task_id, type='audio', final='false', t=int(datetime.now().timestamp())),
+                    'filename': os.path.basename(audio_path)
+                }
+        
+        if 'pdf_file' in data:
+            pdf_path = data['pdf_file']
+            if os.path.exists(pdf_path):
+                download_links['pdf'] = {
+                    'url': url_for('main.download', task_id=task_id, type='pdf', final='true', t=int(datetime.now().timestamp())),
+                    'filename': os.path.basename(pdf_path)
+                }
+                
+        if not download_links:
+            flash("No files are available for download", "error")
+            return redirect(url_for('main.index'))
+            
+        return render_template('downloads.html', 
+                               task_id=task_id, 
+                               download_links=download_links,
+                               status=data.get('status'))
+                               
+    except Exception as e:
+        current_app.logger.error(f"Error generating download page for task {task_id}: {str(e)}")
+        flash("An error occurred. Please try again.", "error")
+        return redirect(url_for('main.index'))

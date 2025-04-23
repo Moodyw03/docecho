@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+    .download-container {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        margin: 2rem auto;
+        max-width: 600px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    h1 {
+        color: #10a37f;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    p {
+        margin-bottom: 1.5rem;
+        color: #333;
+        line-height: 1.6;
+    }
+    
+    .download-links {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    
+    .download-btn {
+        display: block;
+        background-color: #10a37f;
+        color: white;
+        padding: 1rem;
+        text-align: center;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: bold;
+        transition: background-color 0.3s ease;
+    }
+    
+    .download-btn:hover {
+        background-color: #0e9271;
+    }
+    
+    .back-btn {
+        display: block;
+        text-align: center;
+        margin-top: 2rem;
+        color: #10a37f;
+        text-decoration: none;
+    }
+    
+    .back-btn:hover {
+        text-decoration: underline;
+    }
+    
+    .status {
+        padding: 0.5rem 1rem;
+        background-color: #f0f0f0;
+        border-radius: 4px;
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+    
+    .warning {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="download-container">
+    <h1>Your Files Are Ready</h1>
+    
+    {% if status and status.startswith('Warning') %}
+    <div class="status warning">
+        <p>{{ status }}</p>
+    </div>
+    {% else %}
+    <div class="status">
+        <p>Status: {{ status }}</p>
+    </div>
+    {% endif %}
+    
+    <p>Your files have been processed and are ready for download. Click the links below to download your files.</p>
+    
+    <div class="download-links">
+        {% if download_links.audio %}
+        <a href="{{ download_links.audio.url }}" class="download-btn">
+            Download Audio File ({{ download_links.audio.filename }})
+        </a>
+        {% endif %}
+        
+        {% if download_links.pdf %}
+        <a href="{{ download_links.pdf.url }}" class="download-btn">
+            Download PDF File ({{ download_links.pdf.filename }})
+        </a>
+        {% endif %}
+    </div>
+    
+    <a href="{{ url_for('main.index') }}" class="back-btn">Back to Home</a>
+</div>
+{% endblock %} 

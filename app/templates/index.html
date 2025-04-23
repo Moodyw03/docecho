@@ -569,10 +569,65 @@
                     // Check if there's a warning about failed PDF
                     const hasPDFFailure = data.status.includes("PDF failed");
                     
+                    // Show download button in case automatic download fails
+                    // Create a download container div
+                    let downloadContainer = document.getElementById("downloadContainer");
+                    if (!downloadContainer) {
+                        downloadContainer = document.createElement("div");
+                        downloadContainer.id = "downloadContainer";
+                        downloadContainer.style.marginTop = "1rem";
+                        downloadContainer.style.textAlign = "center";
+                        progressContainer.appendChild(downloadContainer);
+                    }
+                    
+                    // Add a visible download button with timestamp to prevent caching
+                    const timestamp = new Date().getTime();
+                    let downloadUrl;
+                    let buttonText;
+                    
+                    if (outputFormat === "both" && hasPDFFailure) {
+                        downloadUrl = "/download/" + taskId + "?type=audio&final=true&t=" + timestamp;
+                        buttonText = "Download Audio";
+                    } else if (outputFormat === "both") {
+                        // For both formats, show two buttons
+                        downloadContainer.innerHTML = `
+                            <a href="/download/${taskId}?type=audio&final=false&t=${timestamp}" 
+                               class="btn" style="display:inline-block; width:auto; margin:0 5px;" 
+                               target="_blank">Download Audio</a>
+                            <a href="/download/${taskId}?type=pdf&final=true&t=${timestamp}" 
+                               class="btn" style="display:inline-block; width:auto; margin:0 5px;" 
+                               target="_blank">Download PDF</a>
+                            <div style="margin-top:10px">
+                              <a href="/downloads/${taskId}" style="color:#10a37f; text-decoration:underline;">
+                                Go to downloads page
+                              </a>
+                            </div>
+                        `;
+                    } else {
+                        downloadUrl = "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + timestamp;
+                        buttonText = "Download " + (outputFormat === "audio" ? "Audio" : "PDF");
+                    }
+                    
+                    // Add a single button for non-both formats
+                    if (outputFormat !== "both" || hasPDFFailure) {
+                        downloadContainer.innerHTML = `
+                            <a href="${downloadUrl}" class="btn" target="_blank">${buttonText}</a>
+                            <div style="margin-top:10px">
+                              <a href="/downloads/${taskId}" style="color:#10a37f; text-decoration:underline;">
+                                Go to downloads page
+                              </a>
+                            </div>
+                        `;
+                    }
+                    
+                    console.log("Processing completed! Attempting automatic download...");
+                    statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
+                    
                     // For 'both' format with PDF failure, only download audio
                     if (outputFormat === "both" && hasPDFFailure) {
                         statusMessage.textContent = "PDF generation failed, downloading audio only...";
                         var timestamp = new Date().getTime();
+                        console.log("Redirecting to:", "/download/" + taskId + "?type=audio&final=true&t=" + timestamp);
                         window.location.href = "/download/" + taskId + "?type=audio&final=true&t=" + timestamp;
                         return;
                     }
@@ -586,31 +641,35 @@
                         const audioIframe = document.createElement('iframe');
                         audioIframe.style.display = 'none';
                         audioIframe.onload = function() {
-                            console.log("Audio download iframe loaded");
+                            console.log("Audio download iframe loaded, navigating to PDF download");
+                            
+                            // Then trigger PDF download after a longer delay to ensure both downloads work
+                            setTimeout(() => {
+                                // Add a timestamp to prevent caching
+                                var pdfTimestamp = new Date().getTime();
+                                console.log("Redirecting to PDF:", "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp);
+                                window.location.href = "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp;
+                                // Change status message to indicate completion
+                                statusMessage.textContent = "Processing completed! If downloads don't start automatically, use buttons below.";
+                            }, 2000);
                         };
                         audioIframe.onerror = function() {
                             console.error("Audio download iframe error");
+                            statusMessage.textContent = "Error downloading audio. Please use the buttons below.";
                         };
                         // Add a timestamp to prevent caching
                         var timestamp = new Date().getTime();
+                        console.log("Loading audio iframe:", "/download/" + taskId + "?type=audio&final=false&t=" + timestamp);
                         audioIframe.src = "/download/" + taskId + "?type=audio&final=false&t=" + timestamp;
                         document.body.appendChild(audioIframe);
-                        
-                        // Then trigger PDF download after a longer delay to ensure both downloads work
-                        setTimeout(() => {
-                            // Add a timestamp to prevent caching
-                            var pdfTimestamp = new Date().getTime();
-                            window.location.href = "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp;
-                            // Change status message to indicate completion
-                            statusMessage.textContent = "Processing completed! Files downloaded.";
-                        }, 2000);
                     } else {
                         // For single file formats (audio, pdf, text)
                         // Add a timestamp to prevent caching
                         var finalTimestamp = new Date().getTime();
+                        console.log("Redirecting to:", "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp);
                         window.location.href = "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp;
                         // Change status message to indicate completion
-                        statusMessage.textContent = "Processing completed! File downloaded.";
+                        statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
                     }
                 } else if (data.status === 'error') {
                     statusMessage.textContent = `Error: ${data.error || 'Unknown error occurred'}`;
