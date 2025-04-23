@@ -39,8 +39,9 @@ primary_region = "lhr"
   release_command = "flask db upgrade"
 
 [mounts]
-  source = "docecho_data"
+  source = "app_data"
   destination = "/app/data"
+  processes = ["app", "worker"] # Mount to both app and worker processes
 
 [[vm]]
   # Use larger VMs now
