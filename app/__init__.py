@@ -176,9 +176,6 @@ def register_blueprints_and_models(app):
     from app.models.user import User
     from app.models.task_progress import TaskProgress
     
-    # Create database tables
-    db.create_all()
-    
     # Register blueprints
     from app.routes.auth import bp as auth_bp
     from app.routes.main import bp as main_bp
