@@ -563,11 +563,22 @@
                 progressBarFill.style.width = `${data.progress}%`;
                 statusMessage.textContent = data.status;
                 
-                if (data.status === 'completed') {
+                if (data.status === 'completed' || data.status.startsWith('Warning')) {
                     const outputFormat = document.getElementById("output_format").value;
                     
-                    // Always handle audio first
-                    if (outputFormat === "both") {
+                    // Check if there's a warning about failed PDF
+                    const hasPDFFailure = data.status.includes("PDF failed");
+                    
+                    // For 'both' format with PDF failure, only download audio
+                    if (outputFormat === "both" && hasPDFFailure) {
+                        statusMessage.textContent = "PDF generation failed, downloading audio only...";
+                        var timestamp = new Date().getTime();
+                        window.location.href = "/download/" + taskId + "?type=audio&final=true&t=" + timestamp;
+                        return;
+                    }
+                    
+                    // Always handle audio first for 'both' format
+                    if (outputFormat === "both" && !hasPDFFailure) {
                         // Log the success message first
                         statusMessage.textContent = "Processing completed! Downloading files...";
                         
@@ -594,6 +605,7 @@
                             statusMessage.textContent = "Processing completed! Files downloaded.";
                         }, 2000);
                     } else {
+                        // For single file formats (audio, pdf, text)
                         // Add a timestamp to prevent caching
                         var finalTimestamp = new Date().getTime();
                         window.location.href = "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp;

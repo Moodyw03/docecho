@@ -285,6 +285,8 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         if not audio_files and output_format == 'audio':
              raise Exception("No audio chunks were successfully converted.")
 
+        # Initialize final_output_path to avoid "referenced before assignment" error
+        final_output_path = None
 
         if output_format == 'audio':
             update_progress(task_id, status='Concatenating audio files...', progress=90)
@@ -331,6 +333,9 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
             logger.info(f"[{task_id}] Concatenating audio to: {audio_path}")
             concatenate_audio_files(audio_files, audio_path)
             
+            # Always set at least one final output path after audio is created
+            final_output_path = audio_path
+            
             # Then create PDF
             update_progress(task_id, status='Translating text and creating PDF...', progress=80)
             pdf_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
@@ -348,10 +353,12 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
                 
                 update_progress(task_id, status='Creating translated PDF...', progress=95)
                 create_translated_pdf(translated_text, pdf_path, language_code=lang_code)
-                final_output_path = pdf_path  # Use PDF path as the final path to return
+                final_output_path = pdf_path  # Update the final path to the PDF once created
             except Exception as e:
+                # Even if PDF creation fails, we have already set final_output_path to audio_path
                 logger.error(f"[{task_id}] Error during PDF translation/creation: {e}")
-                raise Exception(f"Failed to create translated PDF: {e}")
+                update_progress(task_id, status=f"Warning: Audio created but PDF failed: {e}", progress=95, has_error=True)
+                # Don't raise the exception as we still have an audio file to return
                 
         # Cleanup temporary audio files
         logger.info(f"[{task_id}] Cleaning up temporary files from: {temp_path}")
@@ -365,6 +372,13 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
 
         # Force garbage collection again
         gc.collect()
+        
+        # Check if final_output_path was assigned properly
+        if final_output_path is None:
+            error_msg = f"No output file was created. Format: {output_format}"
+            logger.error(f"[{task_id}] {error_msg}")
+            update_progress(task_id, status=f'Error: {error_msg}', progress=100, error=True)
+            raise Exception(error_msg)
         
         logger.info(f"[{task_id}] PDF processing finished successfully. Output: {final_output_path}")
         

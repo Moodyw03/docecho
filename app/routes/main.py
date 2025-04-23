@@ -192,7 +192,7 @@ def download(task_id):
             current_app.logger.error(f"Task {task_id} not found in progress data")
             return jsonify({"error": "Task not found"}), 404
             
-        if data.get('status') != 'completed':
+        if data.get('status') != 'completed' and not data.get('status', '').startswith('Warning'):
             current_app.logger.error(f"Task {task_id} not completed. Status: {data.get('status')}")
             return jsonify({"error": "Files not ready"}), 400
             
@@ -207,6 +207,9 @@ def download(task_id):
             return jsonify({"error": "Audio file not found"}), 404
         elif file_type == 'pdf' and 'pdf_file' not in data:
             current_app.logger.error(f"PDF file not found in data for task {task_id}")
+            # If we're in 'Warning' state and PDF failed but audio succeeded, return helpful message
+            if data.get('status', '').startswith('Warning') and file_type == 'pdf':
+                return jsonify({"error": "PDF generation failed, but audio is available"}), 400
             return jsonify({"error": "PDF file not found"}), 404
             
         file_path = data['audio_file'] if file_type == 'audio' else data['pdf_file']
