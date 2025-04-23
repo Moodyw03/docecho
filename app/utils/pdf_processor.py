@@ -193,6 +193,10 @@ def process_pdf(self, filename, file_path, voice, speed, output_format, output_p
     # Use self.request.id as the task_id
     task_id = self.request.id
     try:
+        # ADD DELAY: Introduce a small delay to allow filesystem sync
+        time.sleep(2) 
+        logger.info(f"[{task_id}] Woke up after delay.")
+
         # Force garbage collection at start
         gc.collect()
         logger.info(f"[{task_id}] Starting PDF processing for: {filename}")
