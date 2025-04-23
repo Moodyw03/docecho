@@ -8,13 +8,13 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize extensions - REMOVE global db and mail instances
-# db = SQLAlchemy()
+# Initialize extensions globally (except Mail which needs config first)
+db = SQLAlchemy()
 login_manager = LoginManager()
-# mail = Mail()
+# mail = Mail() # Keep Mail instantiation in create_app
 
 def init_extensions(app):
-    """Initialize non-DB extensions. DB init assumed handled by Migrate."""
+    """Initialize non-DB extensions. DB is initialized in create_app before Migrate."""
     # Retrieve mail instance stored in create_app
     mail = app.extensions['mail']
 
@@ -24,35 +24,13 @@ def init_extensions(app):
 
     login_manager.login_view = 'auth.login'
 
-    # Log database connection info (DB assumed initialized before this)
-    logger.info(f"Database connection check: {app.config['SQLALCHEMY_DATABASE_URI'].split(':')[0]}")
-    
-    # Set up connection pooling options (DB assumed initialized before this)
-    if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgresql'):
-        logger.info("Setting up PostgreSQL connection pooling")
-        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-            'pool_pre_ping': True,
-            'pool_recycle': 300,
-            'pool_size': 5,
-            'max_overflow': 10
-        }
+    # Logging/pooling config can happen here or after db.init_app in create_app
+    # Let's keep it simple here for now.
 
 def get_db():
-    """Helper function to get the db instance from the current app context."""
-    from flask import current_app, has_app_context
-
-    if not has_app_context():
-        # This should ideally not happen if called correctly
-        logger.error("get_db called without active app context!")
-        raise RuntimeError("Application context required to get DB instance.")
-
-    # Retrieve db from app extensions
-    try:
-        # SQLAlchemy 3.x stores the extension instance directly
-        return current_app.extensions['sqlalchemy']
-    except KeyError:
-        logger.error("SQLAlchemy extension not found in current_app.extensions")
-        raise RuntimeError("SQLAlchemy not initialized for this app context.")
+    """Helper function to get the globally defined db instance."""
+    # Assumes db has been initialized via init_app by the app factory
+    return db
 
 # Update exports
-__all__ = ['login_manager', 'get_db']
+__all__ = ['db', 'login_manager', 'get_db'] # Add db back

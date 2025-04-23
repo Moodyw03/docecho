@@ -1,9 +1,10 @@
-from flask_login import UserMixin
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
 from sqlalchemy.orm import declarative_base
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
-from app import db, login_manager
+from app.extensions import db, login_manager
 import jwt
 from flask import current_app
 

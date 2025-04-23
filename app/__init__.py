@@ -9,7 +9,8 @@ from app.config import Config
 import threading
 import time
 import copy
-from app.extensions import login_manager, init_extensions
+# Import db globally now
+from app.extensions import db, login_manager, init_extensions
 from flask_mail import Mail
 
 # Background task for cleaning up expired progress records
@@ -56,26 +57,23 @@ def create_app():
     print(f"Mail Server configured: {'Yes' if app.config.get('MAIL_SERVER') else 'No'}")
     print(f"Mail Default Sender configured: {'Yes' if app.config.get('MAIL_DEFAULT_SENDER') else 'No'}")
     
-    # Instantiate extensions locally within create_app
-    db = SQLAlchemy()
+    # Instantiate Mail locally (needs config)
     mail = Mail()
+    app.extensions['mail'] = mail # Store mail instance for init_extensions
 
-    # Store extensions on app.extensions *before* initializing them
-    # Flask-SQLAlchemy uses the key 'sqlalchemy'
-    app.extensions['sqlalchemy'] = db
-    app.extensions['mail'] = mail
-
-    # Configure database (needs to happen before init_extensions)
+    # Configure database (needs to happen before db.init_app)
     configure_database(app)
 
     # Set up static folders
     configure_static_folders(app)
 
-    # Initialize Migrate *before* init_extensions, as Migrate might handle db init
+    # Initialize db with the app *before* Migrate
+    db.init_app(app)
+
+    # Initialize Migrate *after* db.init_app
     migrate = Migrate(app, db)
 
-    # Initialize extensions using the function from extensions.py
-    # This will call mail.init_app(app), login_manager.init_app(app)
+    # Initialize other extensions (Mail, LoginManager)
     init_extensions(app)
 
     # Create progress directory
