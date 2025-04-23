@@ -445,112 +445,152 @@
   </div>
 
   <script>
-    document.getElementById("pdf_file").addEventListener("change", function () {
-        var fileName = this.files[0].name;
-        document.getElementById("uploadedFileName").textContent = "Selected: " + fileName;
-    });
+    document.addEventListener("DOMContentLoaded", function() {
+      console.log("DOM content loaded, initializing event listeners");
+      
+      // File selection handler
+      const pdfFileInput = document.getElementById("pdf_file");
+      if (pdfFileInput) {
+        pdfFileInput.addEventListener("change", function () {
+          var fileName = this.files[0].name;
+          document.getElementById("uploadedFileName").textContent = "Selected: " + fileName;
+        });
+      }
+      
+      // Speed slider handler
+      const speedSlider = document.getElementById("speed");
+      if (speedSlider) {
+        speedSlider.addEventListener("input", function() {
+          document.getElementById("speedValue").textContent = this.value + "x";
+        });
+      }
+      
+      // Output format change handler
+      const outputFormatSelect = document.getElementById("output_format");
+      if (outputFormatSelect) {
+        outputFormatSelect.addEventListener("change", updateButtonText);
+      }
+      
+      // Form submission handler - most critical part
+      const uploadForm = document.getElementById("uploadForm");
+      if (uploadForm) {
+        console.log("Found upload form, attaching submit event listener");
+        uploadForm.addEventListener("submit", async function (e) {
+          console.log("Form submit event triggered");
+          e.preventDefault();
+          console.log("Default form submission prevented");
+          
+          // Check authentication first
+          const isAuthenticated = {{ 'true' if current_user.is_authenticated else 'false' }};
+          if (!isAuthenticated) {
+              window.location.href = "{{ url_for('auth.login') }}";
+              return;
+          }
+          
+          // Show progress container and reset its state
+          const progressContainer = document.getElementById("progressContainer");
+          const statusMessage = document.getElementById("statusMessage");
+          const progressBarFill = document.getElementById("progressBarFill");
+          
+          progressContainer.style.display = "block";
+          statusMessage.textContent = "Starting upload...";
+          progressBarFill.style.width = "0%";
+          
+          var formData = new FormData(this);
+          
+          try {
+              console.log("Submitting form via fetch...");
+              const response = await fetch("/", {
+                  method: "POST",
+                  body: formData,
+                  credentials: 'include',  // Include credentials
+                  headers: {
+                      'X-Requested-With': 'XMLHttpRequest'  // Add this header
+                  }
+              });
 
-    document.getElementById("speed").addEventListener("input", function() {
-        document.getElementById("speedValue").textContent = this.value + "x";
+              if (response.redirected) {
+                  console.log("Response was redirected to:", response.url);
+                  window.location.href = response.url;
+                  return;
+              }
+
+              if (response.status === 401) {
+                  window.location.href = "{{ url_for('auth.login') }}";
+                  throw new Error('Please login to use this service');
+              }
+
+              if (response.status === 402) {
+                  window.location.href = "{{ url_for('main.pricing') }}";
+                  throw new Error('Insufficient credits. Please purchase more credits.');
+              }
+
+              // Get the response text first for logging
+              const responseText = await response.text();
+              console.log("Response received:", responseText);
+              
+              // Try to parse as JSON
+              let data;
+              try {
+                  data = JSON.parse(responseText);
+                  console.log("Parsed JSON data:", data);
+              } catch (parseError) {
+                  console.error("Error parsing JSON:", parseError);
+                  statusMessage.textContent = "Error: Invalid response from server";
+                  return;
+              }
+              
+              if (data.error) {
+                  throw new Error(data.error);
+              }
+              
+              if (data.task_id) {
+                  console.log("Task ID received:", data.task_id);
+                  statusMessage.textContent = "Processing started. Tracking progress...";
+                  // Start tracking progress
+                  checkProgress(data.task_id);
+              } else {
+                  statusMessage.textContent = "Error: No task ID received";
+                  console.error("No task_id in response:", data);
+              }
+          } catch (error) {
+              statusMessage.textContent = "Error: " + error.message;
+              console.error("Error:", error);
+          }
+        });
+      } else {
+        console.error("Upload form not found - critical error");
+      }
+      
+      // Initialize button text
+      updateButtonText();
+      
+      // Voice select change handler
+      const voiceSelect = document.getElementById("voice");
+      if (voiceSelect) {
+        voiceSelect.addEventListener("change", updateOutputOptions);
+        updateOutputOptions();
+      }
     });
 
     function updateButtonText() {
-        const outputFormat = document.getElementById("output_format").value;
-        const button = document.querySelector(".btn");
-        switch(outputFormat) {
-            case "pdf":
-                button.textContent = "Convert to PDF";
-                break;
-            case "both":
-                button.textContent = "Convert to Audio & PDF";
-                break;
-            default:
-                button.textContent = "Convert to Audio";
-        }
+      const outputFormat = document.getElementById("output_format");
+      if (!outputFormat) return;
+      
+      const button = document.querySelector(".btn");
+      if (!button) return;
+      
+      switch(outputFormat.value) {
+          case "pdf":
+              button.textContent = "Convert to PDF";
+              break;
+          case "both":
+              button.textContent = "Convert to Audio & PDF";
+              break;
+          default:
+              button.textContent = "Convert to Audio";
+      }
     }
-
-    document.getElementById("output_format").addEventListener("change", updateButtonText);
-
-    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
-        e.preventDefault();
-        
-        // Check authentication first
-        {% if not current_user.is_authenticated %}
-            window.location.href = "{{ url_for('auth.login') }}";
-            return;
-        {% endif %}
-        
-        // Show progress container and reset its state
-        const progressContainer = document.getElementById("progressContainer");
-        const statusMessage = document.getElementById("statusMessage");
-        const progressBarFill = document.getElementById("progressBarFill");
-        
-        progressContainer.style.display = "block";
-        statusMessage.textContent = "Starting upload...";
-        progressBarFill.style.width = "0%";
-        
-        var formData = new FormData(this);
-        
-        try {
-            console.log("Submitting form...");
-            const response = await fetch("/", {
-                method: "POST",
-                body: formData,
-                credentials: 'include',  // Include credentials
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'  // Add this header
-                }
-            });
-
-            if (response.redirected) {
-                console.log("Response was redirected to:", response.url);
-                window.location.href = response.url;
-                return;
-            }
-
-            if (response.status === 401) {
-                window.location.href = "{{ url_for('auth.login') }}";
-                throw new Error('Please login to use this service');
-            }
-
-            if (response.status === 402) {
-                window.location.href = "{{ url_for('main.pricing') }}";
-                throw new Error('Insufficient credits. Please purchase more credits.');
-            }
-
-            // Get the response text first for logging
-            const responseText = await response.text();
-            console.log("Response received:", responseText);
-            
-            // Try to parse as JSON
-            let data;
-            try {
-                data = JSON.parse(responseText);
-                console.log("Parsed JSON data:", data);
-            } catch (parseError) {
-                console.error("Error parsing JSON:", parseError);
-                statusMessage.textContent = "Error: Invalid response from server";
-                return;
-            }
-            
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            if (data.task_id) {
-                console.log("Task ID received:", data.task_id);
-                statusMessage.textContent = "Processing started. Tracking progress...";
-                // Start tracking progress
-                checkProgress(data.task_id);
-            } else {
-                statusMessage.textContent = "Error: No task ID received";
-                console.error("No task_id in response:", data);
-            }
-        } catch (error) {
-            statusMessage.textContent = "Error: " + error.message;
-            console.error("Error:", error);
-        }
-    });
 
     function checkProgress(taskId) {
         console.log(`Checking progress for task: ${taskId}`);
@@ -791,9 +831,6 @@
             });
     }
 
-    // Call updateButtonText on page load
-    updateButtonText();
-
     // Add this function to handle language-based restrictions
     function updateOutputOptions() {
         const voiceSelect = document.getElementById("voice");
@@ -825,14 +862,5 @@
             updateButtonText();
         }
     }
-
-    // Only add event listeners if elements exist
-    document.addEventListener("DOMContentLoaded", function() {
-        const voiceSelect = document.getElementById("voice");
-        if (voiceSelect) {
-            voiceSelect.addEventListener("change", updateOutputOptions);
-            updateOutputOptions();
-        }
-    });
   </script>
 {% endblock %}
