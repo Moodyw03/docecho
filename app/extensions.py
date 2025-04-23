@@ -31,15 +31,9 @@ def init_db(app):
         }
 
 def get_db():
-    """Helper function to get db instance with proper app context checks"""
-    from flask import current_app, has_app_context
-    
-    if not has_app_context():
-        logger.warning("No application context when accessing db. Creating temporary context.")
-        from app import create_app
-        app = create_app()
-        with app.app_context():
-            return db
+    """Helper function to get the globally defined db instance. Assumes app context exists."""
+    # Caller is responsible for ensuring app context
+    # No longer creates temporary context
     return db
 
 # Add this to make db explicitly available for import
