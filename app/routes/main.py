@@ -6,7 +6,7 @@ from app.utils.progress import get_progress, update_progress, delete_progress
 import os
 import uuid
 import threading
-from app.utils.pdf_processor import process_pdf as process_pdf_util
+from app.utils.pdf_processor import process_pdf
 import stripe
 from werkzeug.utils import secure_filename
 import copy
@@ -41,43 +41,12 @@ def process_file():
             return jsonify({"error": "No selected file"}), 400
             
         if file and file.filename.endswith(".pdf"):
-            task_id = str(uuid.uuid4())
-            current_app.logger.info(f"Generated task ID: {task_id}")
-            
             # Get the current app
             app = current_app._get_current_object()
             
-            # Initialize progress tracking for this task
-            try:
-                # Initialize with more data for better tracking
-                initial_progress = {
-                    'status': 'uploading',
-                    'progress': 0,
-                    'created_at': datetime.utcnow().isoformat(),
-                    'task_id': task_id
-                }
-                from app.utils.progress import set_progress
-                success = set_progress(task_id, initial_progress)
-                
-                if success:
-                    current_app.logger.info(f"Created progress tracking for task {task_id}")
-                else:
-                    current_app.logger.warning(f"Progress tracking initialization may have failed for task {task_id}")
-            except Exception as e:
-                import traceback
-                error_details = traceback.format_exc()
-                current_app.logger.error(f"Error initializing progress tracking: {str(e)}\n{error_details}")
-                return jsonify({"error": "Error initializing progress tracking", "details": str(e)}), 500
-            
-            # Create upload directory if it doesn't exist
-            upload_dir = os.path.join(app.root_path, 'static', 'uploads')
-            output_dir = os.path.join(app.root_path, 'static', 'output')
-            os.makedirs(upload_dir, exist_ok=True)
-            os.makedirs(output_dir, exist_ok=True)
-            
             # Save the uploaded file with safe filename
             safe_filename = secure_filename(file.filename)
-            file_path = os.path.join(upload_dir, f"{task_id}_{safe_filename}")
+            file_path = os.path.join(app.root_path, 'static', 'uploads', safe_filename)
             file.save(file_path)
             
             voice = request.form.get("voice", "en")
@@ -91,7 +60,7 @@ def process_file():
             if current_user.credits < required_credits:
                 return jsonify({"error": "Insufficient credits"}), 402
             
-            # Deduct credits and commit before starting the thread
+            # Deduct credits and commit before starting the task
             user_id = current_user.id
             with app.app_context():
                 user = User.query.get(user_id)
@@ -100,47 +69,37 @@ def process_file():
                     db.session.commit()
                     current_app.logger.info(f"Deducted {required_credits} credits from user {user_id}")
             
-            # Generate output filename
-            output_filename = f"{os.path.splitext(safe_filename)[0]}_{task_id}.mp3"
-            output_path = os.path.join(output_dir, output_filename)
-            
-            # Store all parameters needed for processing
+            # Generate output filename base (task ID will be added by process_pdf if needed)
+            output_filename_base = f"{os.path.splitext(safe_filename)[0]}"
+            # The final path depends on where process_pdf saves it.
+            # We need to ensure process_pdf generates the correct final output_path
+            # Let's define the intended final output directory
+            final_output_dir = os.path.join(app.root_path, 'static', 'output')
+            # The final filename will be constructed within the task.
+
+            # Store parameters needed for processing
             process_params = {
                 'filename': safe_filename,
-                'file_path': file_path,
+                'file_path': file_path, # Pass the initial saved path
                 'voice': voice,
                 'speed': speed,
-                'task_id': task_id,
                 'output_format': output_format,
-                'output_path': output_path
+                'output_path': final_output_dir # Pass the target directory
             }
-            
+
             # Log the parameters for debugging
-            current_app.logger.info(f"Processing PDF with parameters: {json.dumps(process_params, default=str)}")
-            
-            # Update progress to processing
-            from app.utils.progress import update_progress
-            update_progress(task_id, status='processing', progress=5)
-            
-            # Define a function to process PDF with app context
-            def process_with_app_context(app, params):
-                with app.app_context():
-                    try:
-                        # Call the utility function directly with unpacked parameters
-                        process_pdf_util(**params)
-                        current_app.logger.info(f"PDF processing completed for task {params['task_id']}")
-                    except Exception as e:
-                        import traceback
-                        error_details = traceback.format_exc()
-                        current_app.logger.error(f"Error processing PDF: {str(e)}\n{error_details}")
-                        update_progress(params['task_id'], status='error', error=str(e), progress=0)
-            
-            # Start processing in a background thread
-            thread = threading.Thread(target=process_with_app_context, args=(app, process_params))
-            thread.daemon = True
-            thread.start()
-            
-            current_app.logger.info(f"Started background processing for task {task_id}")
+            current_app.logger.info(f"Enqueuing PDF processing with parameters: {json.dumps(process_params, default=str)}")
+
+            # Enqueue the task with Celery
+            # .delay() is a shortcut for .apply_async()
+            task = process_pdf.delay(**process_params)
+            task_id = task.id # Get the Celery task ID
+
+            # Update progress to initializing/queued (optional, depends on desired UX)
+            # update_progress(task_id, status='queued', progress=1)
+            # For simplicity, we might rely on the worker to set initial progress
+
+            current_app.logger.info(f"Enqueued background processing task {task_id}")
             return jsonify({"task_id": task_id}), 202
             
         return jsonify({"error": "Invalid file type"}), 400

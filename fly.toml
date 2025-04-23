@@ -6,24 +6,31 @@
 app = "docecho"
 primary_region = "lhr"
 
+# Define processes for web server and celery worker
+[processes]
+  # Use gunicorn settings from env vars if defined, otherwise defaults
+  web = "gunicorn --bind :${PORT:-8080} --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-120} --worker-class gthread wsgi:app"
+  # Run celery worker, pointing to the celery instance in celery_worker.py
+  worker = "celery -A celery_worker.celery worker --loglevel=INFO -c 2" # -c specifies concurrency (2 workers)
+
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
+  auto_stop_machines = true # Can disable for worker if needed
+  auto_start_machines = true # Can disable for worker if needed
   min_machines_running = 0
-  processes = ["app"]
+  # Only expose the 'web' process via HTTP
+  processes = ["web"]
 
 [env]
   FLASK_ENV = "production"
   PORT = "8080"
   PYTHONUNBUFFERED = "1"
   FLY_APP_NAME = "docecho"
-  # Use synchronous workers to prevent database connection issues
-  GUNICORN_WORKERS = "2"
-  GUNICORN_THREADS = "4"
-  # Increase timeouts for API calls
-  GUNICORN_TIMEOUT = "300"
+  # Gunicorn settings moved to [processes] command, can be removed or kept for reference
+  # GUNICORN_WORKERS = "2"
+  # GUNICORN_THREADS = "4"
+  # GUNICORN_TIMEOUT = "300"
 
 [build]
   dockerfile = "Dockerfile"
@@ -36,10 +43,12 @@ primary_region = "lhr"
   destination = "/app/data"
 
 [[vm]]
-  # Use smaller VMs to stay in free tier (up to 3 allowed)
+  # Use larger VMs now
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "1024mb" # Updated memory
   cpu_kind = "shared"
+  # Assign processes to VMs. Can have dedicated VMs for workers later if needed.
+  processes = ["web", "worker"]
 
 [[statics]]
   guest_path = "/app/app/static"

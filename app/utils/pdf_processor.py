@@ -5,6 +5,8 @@ from googletrans import Translator
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from app.utils.progress import update_progress
+# Import celery instance
+from celery_worker import celery
 import os
 import gc
 import time
@@ -178,7 +180,10 @@ def translate_with_timeout(translator, text, dest, timeout=10):
         
     return result, None
 
-def process_pdf(filename, file_path, voice, speed, task_id, output_format, output_path):
+@celery.task(bind=True)
+def process_pdf(self, filename, file_path, voice, speed, output_format, output_path):
+    # Use self.request.id as the task_id
+    task_id = self.request.id
     try:
         # Force garbage collection at start
         gc.collect()
@@ -407,4 +412,5 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
     except Exception as e:
         logger.error(f"[{task_id}] Error processing PDF: {str(e)}", exc_info=True)
         update_progress(task_id, status='error', error=str(e), progress=0)
-        raise Exception(f"Error processing PDF: {str(e)}") 
+        # Re-raise the exception so Celery knows the task failed
+        raise 
