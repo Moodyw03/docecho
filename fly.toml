@@ -41,7 +41,7 @@ primary_region = "lhr"
 [mounts]
   source = "docecho_data"
   destination = "/app/data"
-  processes = ["app", "worker"] # Mount to both app and worker processes
+  processes = ["web", "worker"] # Correct process name from 'app' to 'web'
 
 [[vm]]
   # Use larger VMs now
