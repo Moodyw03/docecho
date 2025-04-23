@@ -95,15 +95,38 @@ The application uses SendGrid for sending verification and password reset emails
 
 > **Note**: Without proper email configuration, user registration and password reset features will not work correctly.
 
-### Production Deployment
+## File Paths Management
 
-The application is configured for deployment on Fly.io with the included `fly.toml` file. It uses PostgreSQL for the database and sets up the necessary environment variables. See `DEPLOYMENT_FLY.md` for detailed deployment instructions.
+The application manages file paths in the following way:
+
+### In Local Development
+
+- Uploaded PDFs: `app/static/uploads/{user_id}/{unique_id}/input.pdf`
+- Generated audio: `app/static/output/{user_id}/{unique_id}/output.mp3`
+- Translated PDFs: `app/static/output/{user_id}/{unique_id}/translated.pdf`
+- Temporary files: `app/static/temp/{user_id}/{unique_id}/`
+- Progress tracking: `app/static/progress/{task_id}.json`
+
+### In Production (Fly.io)
+
+The production environment uses a mounted volume at `/app/data` to ensure file persistence:
+
+- All uploaded and generated files are stored in subdirectories under `/app/data`
+- The data volume is mounted to both web and worker processes
+- Files are cleaned up after successful download or after a configurable time period
 
 ## Deployment
 
 ### Fly.io Deployment
 
-The application is configured for deployment on [Fly.io](https://fly.io/). For a complete step-by-step guide, please refer to the [DEPLOYMENT_FLY.md](DEPLOYMENT_FLY.md) file, which includes:
+The application is configured for deployment on [Fly.io](https://fly.io/) with the following architecture:
+
+- **Web Process**: Gunicorn server with 2 workers and 4 threads per worker
+- **Worker Process**: Celery worker with 2 concurrent processes for background tasks
+- **Persistent Storage**: 1GB volume mounted at `/app/data`
+- **Database**: PostgreSQL on Fly.io
+
+For a complete step-by-step guide, please refer to the [DEPLOYMENT_FLY.md](DEPLOYMENT_FLY.md) file, which includes:
 
 - Installing the Fly.io CLI
 - Authenticating with Fly.io
@@ -214,15 +237,6 @@ python delete_users.py
 
 Or use the admin interface at `/clear-users` (admin access required).
 
-### File Management
-
-The application organizes files in the following directories:
-
-- `app/static/uploads`: Temporary storage for uploaded PDF files
-- `app/static/output`: Generated audio and PDF files
-- `app/static/progress`: Progress tracking data (file-based fallback)
-- `app/static/temp`: Temporary files used during processing
-
 ## Troubleshooting
 
 ### Database Issues
@@ -233,6 +247,15 @@ If you encounter database-related errors:
 2. Ensure migrations are up to date with `flask db upgrade`
 3. The application includes a file-based fallback for progress tracking if database operations fail
 
+### Deployment Issues
+
+If you encounter issues with your Fly.io deployment:
+
+1. Check the logs with `fly logs`
+2. Verify that both web and worker processes are running with `fly status`
+3. Ensure the storage volume is properly mounted with `fly ssh console` and check the `/app/data` directory
+4. For host issues, check `fly incidents hosts list` to see if there are any active incidents
+
 ### Processing Errors
 
 If PDF processing fails:
@@ -240,6 +263,7 @@ If PDF processing fails:
 1. Verify that FFmpeg is properly installed and accessible
 2. Check that the PDF is not password-protected or corrupted
 3. Review the application logs for specific error messages
+4. Ensure the worker process is running properly
 
 ## License
 
