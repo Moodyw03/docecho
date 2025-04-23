@@ -196,7 +196,7 @@ def process_pdf(self, filename, file_path, voice, speed, output_format, output_p
         # ADD DELAY: Introduce a small delay to allow filesystem sync
         time.sleep(2) 
         logger.info(f"[{task_id}] Woke up after delay.")
-
+        
         # Force garbage collection at start
         gc.collect()
         logger.info(f"[{task_id}] Starting PDF processing for: {filename}")
@@ -204,9 +204,37 @@ def process_pdf(self, filename, file_path, voice, speed, output_format, output_p
         logger.info(f"[{task_id}] Output base path: {output_path}")
         logger.info(f"[{task_id}] Temp base path: {temp_path}")
 
+        # ADD FILE EXISTENCE CHECK
+        if os.path.exists(file_path):
+            logger.info(f"[{task_id}] CONFIRMED: Input file exists at path")
+            # Get size and permissions for debugging
+            file_stat = os.stat(file_path)
+            logger.info(f"[{task_id}] File size: {file_stat.st_size} bytes, permissions: {oct(file_stat.st_mode)}")
+            # Try to open the file to see if we have read permissions
+            try:
+                with open(file_path, 'rb') as f:
+                    first_bytes = f.read(10)
+                    logger.info(f"[{task_id}] Successfully opened file and read first bytes")
+            except Exception as open_err:
+                logger.error(f"[{task_id}] Could open file but couldn't read: {open_err}")
+        else:
+            logger.error(f"[{task_id}] ERROR: Input file DOES NOT exist at: {file_path}")
+            # Check if directory exists
+            dir_path = os.path.dirname(file_path)
+            if os.path.exists(dir_path):
+                logger.info(f"[{task_id}] Directory exists: {dir_path}")
+                # List directory contents for debugging
+                files = os.listdir(dir_path)
+                logger.info(f"[{task_id}] Directory contents: {files}")
+            else:
+                logger.error(f"[{task_id}] Directory DOES NOT exist: {dir_path}")
+                parent_dir = os.path.dirname(dir_path)
+                if os.path.exists(parent_dir):
+                    logger.info(f"[{task_id}] Parent directory exists: {parent_dir}")
+                else:
+                    logger.error(f"[{task_id}] Parent directory DOES NOT exist: {parent_dir}")
+
         # Create temp and output directories if they don't exist (using configured paths)
-        # output_dir = os.path.dirname(output_path) # Remove this
-        # temp_dir = os.path.join(output_dir, 'temp') # Remove this
         os.makedirs(temp_path, exist_ok=True) # Use temp_path argument
         os.makedirs(output_path, exist_ok=True) # Use output_path argument
 
