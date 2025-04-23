@@ -201,14 +201,17 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         gc.collect()
         logger.info(f"[{task_id}] Starting PDF processing for: {filename}")
         logger.info(f"[{task_id}] Output base path: {output_path}")
-        logger.info(f"[{task_id}] Temp base path: {temp_path}")
-
+        
+        # Create a unique temp directory for this task using the task_id
+        task_temp_path = os.path.join(temp_path, task_id)
+        logger.info(f"[{task_id}] Task-specific temp path: {task_temp_path}")
+        
         # Create temp and output directories if they don't exist (using configured paths)
-        os.makedirs(temp_path, exist_ok=True)
+        os.makedirs(task_temp_path, exist_ok=True)
         os.makedirs(output_path, exist_ok=True)
         
         # Save the received file_content to a temporary file
-        file_path = os.path.join(temp_path, filename)
+        file_path = os.path.join(task_temp_path, filename)
         logger.info(f"[{task_id}] Saving received file content ({len(file_content)} bytes) to: {file_path}")
         
         with open(file_path, 'wb') as f:
@@ -257,8 +260,8 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
                 
                 # Submit task to convert text to audio
                 output_filename=f"chunk_{i}.mp3"
-                # Pass temp_path to convert_text_to_audio
-                futures.append(executor.submit(convert_text_to_audio, chunk, output_filename, lang_code, speed, temp_path, tld))
+                # Pass task_temp_path instead of temp_path to convert_text_to_audio
+                futures.append(executor.submit(convert_text_to_audio, chunk, output_filename, lang_code, speed, task_temp_path, tld))
                 time.sleep(0.1) # Small delay to avoid overwhelming API/System
 
             # Collect results as they complete
@@ -361,7 +364,7 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
                 # Don't raise the exception as we still have an audio file to return
                 
         # Cleanup temporary audio files
-        logger.info(f"[{task_id}] Cleaning up temporary files from: {temp_path}")
+        logger.info(f"[{task_id}] Cleaning up temporary files from: {task_temp_path}")
         for temp_file in audio_files:
             try:
                 if os.path.exists(temp_file):
@@ -369,6 +372,15 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
                     # logger.debug(f"[{task_id}] Removed temp file: {temp_file}") # Optional debug logging
             except Exception as e:
                 logger.warning(f"[{task_id}] Could not remove temporary file {temp_file}: {e}")
+
+        # Clean up the task-specific temp directory
+        try:
+            import shutil
+            if os.path.exists(task_temp_path):
+                shutil.rmtree(task_temp_path)
+                logger.info(f"[{task_id}] Removed task-specific temp directory: {task_temp_path}")
+        except Exception as e:
+            logger.warning(f"[{task_id}] Could not remove task-specific temp directory {task_temp_path}: {e}")
 
         # Force garbage collection again
         gc.collect()
