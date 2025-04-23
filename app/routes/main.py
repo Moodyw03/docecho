@@ -53,6 +53,17 @@ def process_file():
             file.save(file_path)
             current_app.logger.info(f"File saved to: {file_path}")
             
+            # Read the file content into memory to pass directly to the task
+            # This avoids needing shared volumes between the web and worker processes
+            pdf_content = None
+            try:
+                with open(file_path, 'rb') as f:
+                    pdf_content = f.read()
+                current_app.logger.info(f"File content read: {len(pdf_content)} bytes")
+            except Exception as e:
+                current_app.logger.error(f"Error reading file content: {str(e)}")
+                return jsonify({"error": f"Error reading file: {str(e)}"}), 500
+            
             voice = request.form.get("voice", "en")
             output_format = request.form.get("output_format", "audio")
             speed = float(request.form.get("speed", "1.0"))
@@ -85,7 +96,7 @@ def process_file():
             # Store parameters needed for processing
             process_params = {
                 'filename': safe_filename,
-                'file_path': file_path, # Pass the initial saved path
+                'file_content': pdf_content,  # Pass file content instead of path
                 'voice': voice,
                 'speed': speed,
                 'output_format': output_format,
@@ -94,16 +105,14 @@ def process_file():
             }
 
             # Log the parameters for debugging
-            current_app.logger.info(f"Enqueuing PDF processing with parameters: {json.dumps(process_params, default=str)}")
+            log_params = process_params.copy()
+            log_params['file_content'] = f"<{len(pdf_content)} bytes>"  # Don't log binary content
+            current_app.logger.info(f"Enqueuing PDF processing with parameters: {json.dumps(log_params, default=str)}")
 
             # Enqueue the task with Celery
             # .delay() is a shortcut for .apply_async()
             task = process_pdf.delay(**process_params)
             task_id = task.id # Get the Celery task ID
-
-            # Update progress to initializing/queued (optional, depends on desired UX)
-            # update_progress(task_id, status='queued', progress=1)
-            # For simplicity, we might rely on the worker to set initial progress
 
             current_app.logger.info(f"Enqueued background processing task {task_id}")
             return jsonify({"task_id": task_id}), 202
