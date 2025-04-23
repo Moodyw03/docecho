@@ -71,12 +71,12 @@ def create_app():
     # Set up static folders
     configure_static_folders(app)
 
-    # Initialize extensions using the function from extensions.py
-    # This will call db.init_app(app), mail.init_app(app), etc.
-    init_extensions(app)
-
-    # Initialize Migrate *after* db has been initialized with the app
+    # Initialize Migrate *before* init_extensions, as Migrate might handle db init
     migrate = Migrate(app, db)
+
+    # Initialize extensions using the function from extensions.py
+    # This will call mail.init_app(app), login_manager.init_app(app)
+    init_extensions(app)
 
     # Create progress directory
     with app.app_context():

@@ -33,7 +33,7 @@ def login():
             if user.check_password(form.password.data):
                 login_user(user)
                 return redirect(url_for('main.index'))
-        flash('Invalid email or password')
+        flash('Invalid email or password')          
     return render_template('auth/login.html', form=form)
 
 @bp.route('/register', methods=['GET', 'POST'])

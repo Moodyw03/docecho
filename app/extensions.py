@@ -14,21 +14,20 @@ login_manager = LoginManager()
 # mail = Mail()
 
 def init_extensions(app):
-    """Initialize extensions with the Flask app. db and mail are created in create_app."""
-    # Initialize extensions stored on app.extensions
-    db = app.extensions['sqlalchemy']
+    """Initialize non-DB extensions. DB init assumed handled by Migrate."""
+    # Retrieve mail instance stored in create_app
     mail = app.extensions['mail']
 
-    db.init_app(app)
-    login_manager.init_app(app) # login_manager can still be global
+    # Initialize login_manager (global) and mail (passed via app.extensions)
+    login_manager.init_app(app)
     mail.init_app(app)
 
     login_manager.login_view = 'auth.login'
 
-    # Log database connection info
-    logger.info(f"Database initialized with URI type: {app.config['SQLALCHEMY_DATABASE_URI'].split(':')[0]}")
+    # Log database connection info (DB assumed initialized before this)
+    logger.info(f"Database connection check: {app.config['SQLALCHEMY_DATABASE_URI'].split(':')[0]}")
     
-    # Set up connection pooling options
+    # Set up connection pooling options (DB assumed initialized before this)
     if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgresql'):
         logger.info("Setting up PostgreSQL connection pooling")
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
