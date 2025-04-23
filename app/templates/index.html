@@ -568,18 +568,37 @@
                     
                     // Always handle audio first
                     if (outputFormat === "both") {
+                        // Log the success message first
+                        statusMessage.textContent = "Processing completed! Downloading files...";
+                        
                         // Create hidden iframe for audio download first
                         const audioIframe = document.createElement('iframe');
                         audioIframe.style.display = 'none';
-                        audioIframe.src = `/download/${taskId}?type=audio&final=false`;
+                        audioIframe.onload = function() {
+                            console.log("Audio download iframe loaded");
+                        };
+                        audioIframe.onerror = function() {
+                            console.error("Audio download iframe error");
+                        };
+                        // Add a timestamp to prevent caching
+                        var timestamp = new Date().getTime();
+                        audioIframe.src = "/download/" + taskId + "?type=audio&final=false&t=" + timestamp;
                         document.body.appendChild(audioIframe);
                         
-                        // Then trigger PDF download
+                        // Then trigger PDF download after a longer delay to ensure both downloads work
                         setTimeout(() => {
-                            window.location.href = `/download/${taskId}?type=pdf&final=true`;
-                        }, 1000);
+                            // Add a timestamp to prevent caching
+                            var pdfTimestamp = new Date().getTime();
+                            window.location.href = "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp;
+                            // Change status message to indicate completion
+                            statusMessage.textContent = "Processing completed! Files downloaded.";
+                        }, 2000);
                     } else {
-                        window.location.href = `/download/${taskId}?type=${outputFormat}&final=true`;
+                        // Add a timestamp to prevent caching
+                        var finalTimestamp = new Date().getTime();
+                        window.location.href = "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp;
+                        // Change status message to indicate completion
+                        statusMessage.textContent = "Processing completed! File downloaded.";
                     }
                 } else if (data.status === 'error') {
                     statusMessage.textContent = `Error: ${data.error || 'Unknown error occurred'}`;

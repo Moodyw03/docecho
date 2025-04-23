@@ -199,6 +199,9 @@ def download(task_id):
         file_type = request.args.get('type', 'audio')  # Default to audio if not specified
         current_app.logger.info(f"Requested file type: {file_type}")
         
+        # Log all the keys in the data for better debugging
+        current_app.logger.info(f"Available keys in progress data: {list(data.keys())}")
+        
         if file_type == 'audio' and 'audio_file' not in data:
             current_app.logger.error(f"Audio file not found in data for task {task_id}")
             return jsonify({"error": "Audio file not found"}), 404
@@ -212,6 +215,10 @@ def download(task_id):
         # Verify file exists before sending
         if not os.path.exists(file_path):
             current_app.logger.error(f"File not found at path: {file_path}")
+            # Log the output directory for debugging
+            output_dir = current_app.config['OUTPUT_FOLDER']
+            contents = os.listdir(output_dir) if os.path.exists(output_dir) else []
+            current_app.logger.error(f"Contents of output directory: {contents}")
             return jsonify({"error": f"{file_type.upper()} file not found"}), 404
 
         # Get fresh file handle
@@ -226,6 +233,11 @@ def download(task_id):
             conditional=True  # Add conditional sending
         )
         
+        # Add some cache control headers to prevent caching issues
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        
         # Only delete progress if both files have been downloaded
         if request.args.get('final') == 'true':
             delete_progress(task_id)
@@ -236,6 +248,9 @@ def download(task_id):
         
     except Exception as e:
         current_app.logger.error(f"Error downloading file for task {task_id}: {str(e)}")
+        # Add traceback for better debugging
+        import traceback
+        current_app.logger.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 @bp.route('/pricing')

@@ -324,6 +324,34 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
             except Exception as e:
                 logger.error(f"[{task_id}] Error during PDF translation/creation: {e}")
                 raise Exception(f"Failed to create translated PDF: {e}")
+        elif output_format == 'both':
+            # First create audio file
+            update_progress(task_id, status='Concatenating audio files...', progress=70)
+            audio_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
+            logger.info(f"[{task_id}] Concatenating audio to: {audio_path}")
+            concatenate_audio_files(audio_files, audio_path)
+            
+            # Then create PDF
+            update_progress(task_id, status='Translating text and creating PDF...', progress=80)
+            pdf_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
+            logger.info(f"[{task_id}] Writing translated PDF to: {pdf_path}")
+            
+            full_text = '\n'.join(text_chunks)
+            
+            try:
+                update_progress(task_id, status='Translating text...', progress=85)
+                translated_text, error = translate_with_timeout(translator, full_text, dest=lang_code, timeout=180)
+                if error:
+                    raise Exception(f"Translation failed: {error}")
+                if not translated_text:
+                    raise Exception("Translation returned empty result.")
+                
+                update_progress(task_id, status='Creating translated PDF...', progress=95)
+                create_translated_pdf(translated_text, pdf_path, language_code=lang_code)
+                final_output_path = pdf_path  # Use PDF path as the final path to return
+            except Exception as e:
+                logger.error(f"[{task_id}] Error during PDF translation/creation: {e}")
+                raise Exception(f"Failed to create translated PDF: {e}")
                 
         # Cleanup temporary audio files
         logger.info(f"[{task_id}] Cleaning up temporary files from: {temp_path}")
@@ -339,7 +367,21 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         gc.collect()
         
         logger.info(f"[{task_id}] PDF processing finished successfully. Output: {final_output_path}")
-        update_progress(task_id, status='Completed', progress=100)
+        
+        # Update the progress data with the correct file path based on output format
+        if output_format == 'audio':
+            update_progress(task_id, status='Completed', progress=100, audio_file=final_output_path)
+        elif output_format == 'pdf':
+            update_progress(task_id, status='Completed', progress=100, pdf_file=final_output_path)
+        elif output_format == 'text':
+            update_progress(task_id, status='Completed', progress=100, text_file=final_output_path)
+        elif output_format == 'both':
+            # If both, this needs to be handled separately
+            # The audio file would have been processed first, update with both paths
+            audio_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
+            pdf_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
+            update_progress(task_id, status='Completed', progress=100, audio_file=audio_path, pdf_file=pdf_path)
+        
         return final_output_path # Return the path to the final output
 
     except Exception as e:
