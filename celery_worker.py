@@ -1,25 +1,42 @@
 import os
-from app import create_app
 from celery import Celery
 
-# Create Flask app instance to access config
-flask_app = create_app()
+# Read broker URL from environment variable, fallback for local dev
+redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
-# Configure Celery
+# Define Celery instance directly
 celery = Celery(
-    flask_app.import_name,
-    broker=flask_app.config['CELERY_BROKER_URL'],
-    backend=flask_app.config.get('CELERY_RESULT_BACKEND'), # Use .get() for optional backend
-    include=['app.utils.pdf_processor'] # Add other task modules if needed
+    'docecho', # Use a consistent name, e.g., your app name
+    broker=redis_url,
+    backend=redis_url, # Using Redis as result backend is common
+    include=['app.utils.pdf_processor'] # Tell Celery where to find tasks
 )
-celery.conf.update(flask_app.config)
 
-# Define a base task that sets up Flask app context
+# Optional: Set some default configurations if needed
+celery.conf.update(
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+)
+
+# Define a base task that sets up Flask app context *when the task runs*
 class ContextTask(celery.Task):
-    abstract = True # Ensure this isn't registered as a task itself
+    abstract = True
+    _flask_app = None # Cache app instance
+
+    @property
+    def flask_app(self):
+        # Lazily create app instance only when needed by a task
+        if self._flask_app is None:
+            from app import create_app # Import here to avoid top-level circular import
+            self._flask_app = create_app()
+        return self._flask_app
+
     def __call__(self, *args, **kwargs):
-        with flask_app.app_context():
+        with self.flask_app.app_context():
             return self.run(*args, **kwargs)
 
-# Set the base task for all tasks
+# Set the base class for tasks
 celery.Task = ContextTask 
