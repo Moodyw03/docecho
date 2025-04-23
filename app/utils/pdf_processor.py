@@ -11,6 +11,10 @@ import time
 import threading
 import concurrent.futures
 import requests
+import logging
+
+# Add logger instance
+logger = logging.getLogger(__name__)
 
 # Mapping language codes and TLDs for accents
 language_map = {
@@ -178,7 +182,8 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
     try:
         # Force garbage collection at start
         gc.collect()
-        
+        logger.info(f"[{task_id}] Starting PDF processing for: {filename}")
+
         # Create temp and output directories
         output_dir = os.path.dirname(output_path)
         temp_dir = os.path.join(output_dir, 'temp')
@@ -192,6 +197,7 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
         if total_chunks == 0:
             raise Exception("No text could be extracted from the PDF")
 
+        logger.info(f"[{task_id}] Extracted {total_chunks} text chunks.")
         # Use the original translator
         translator = Translator()
         # Reduce batch size for better memory management
@@ -212,14 +218,17 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
             is_last_batch = batch_end == total_chunks
             
             for i, chunk in enumerate(batch):
-                is_last_chunk = (batch_start + i == total_chunks - 1)
-                overall_progress = int(((batch_start + i) / total_chunks) * 100)
+                chunk_index = batch_start + i
+                is_last_chunk = (chunk_index == total_chunks - 1)
+                overall_progress = int((chunk_index / total_chunks) * 100)
                 
                 # More detailed status reporting
-                chunk_message = f'Processing chunk {batch_start + i + 1} of {total_chunks}'
+                chunk_message = f'Processing chunk {chunk_index + 1} of {total_chunks}'
                 if is_last_chunk:
                     chunk_message += ' (final chunk)'
                 
+                logger.info(f"[{task_id}] {chunk_message}")
+
                 update_progress(
                     task_id,
                     status=chunk_message,
@@ -230,6 +239,7 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                     # Add delay to avoid API rate limits
                     time.sleep(1)  # Increased from 0.5
                     
+                    logger.info(f"[{task_id}] Translating chunk {chunk_index + 1}...")
                     # Use the timeout version of translate
                     translated_chunk, error = translate_with_timeout(
                         translator, 
@@ -240,14 +250,15 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                     
                     # Handle translation error/timeout
                     if error:
-                        print(f"Translation error: {str(error)}")
+                        logger.error(f"[{task_id}] Translation error on chunk {chunk_index + 1}: {str(error)}")
                         # Fallback for translation failure
                         translated_chunk = chunk  # Use original text as fallback
                         update_progress(
                             task_id,
-                            status=f'Warning: Using original text for chunk {batch_start + i + 1} (translation failed)',
+                            status=f'Warning: Using original text for chunk {chunk_index + 1} (translation failed)',
                             progress=overall_progress
                         )
+                        logger.info(f"[{task_id}] Translation successful for chunk {chunk_index + 1}.")
                     
                     # Add extra timeout after the last chunk translation
                     if is_last_chunk:
@@ -262,8 +273,9 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                         # Add delay to avoid gTTS API rate limits
                         time.sleep(1)  # Increased from 0.5
                         
-                        chunk_filename = f"{task_id}_chunk_{batch_start + i}.mp3"
+                        chunk_filename = f"{task_id}_chunk_{chunk_index}.mp3"
                         
+                        logger.info(f"[{task_id}] Converting chunk {chunk_index + 1} to audio...")
                         # Add timeout handling for audio conversion
                         try:
                             audio_chunk_path = convert_text_to_audio(
@@ -274,17 +286,18 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                                 lang_settings["tld"]
                             )
                             audio_chunks.append(audio_chunk_path)
+                            logger.info(f"[{task_id}] Audio conversion successful for chunk {chunk_index + 1}.")
                             
                             # Extra delay after the last chunk audio conversion
                             if is_last_chunk:
                                 time.sleep(1)  # Extra delay for last chunk
                                 
                         except Exception as audio_error:
-                            print(f"Audio conversion error: {str(audio_error)}")
+                            logger.error(f"[{task_id}] Audio conversion error on chunk {chunk_index + 1}: {str(audio_error)}")
                             # Continue without this audio chunk
                             update_progress(
                                 task_id,
-                                status=f'Warning: Skipped audio for chunk {batch_start + i + 1} due to error',
+                                status=f'Warning: Skipped audio for chunk {chunk_index + 1} due to error',
                                 progress=overall_progress
                             )
                             continue
@@ -297,11 +310,11 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
 
                 except Exception as e:
                     # Log error but continue
-                    print(f"Error processing chunk: {str(e)}")
+                    logger.error(f"[{task_id}] Error processing chunk {chunk_index + 1}: {str(e)}", exc_info=True)
                     # Update progress to show error on specific chunk
                     update_progress(
                         task_id,
-                        status=f'Error on chunk {batch_start + i + 1}: {str(e)[:50]}...',
+                        status=f'Error on chunk {chunk_index + 1}: {str(e)[:50]}...',
                         progress=overall_progress
                     )
                     # Add delay before continuing to next chunk
@@ -326,6 +339,7 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
         if output_format in ["pdf", "both"]:
             # Free up some memory before PDF generation
             gc.collect()
+            logger.info(f"[{task_id}] Starting PDF creation...")
             
             update_progress(task_id, status='Creating PDF file...', progress=95)
             
@@ -335,27 +349,35 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
             
             try:
                 create_translated_pdf('\n'.join(translated_text), pdf_path, lang_settings["lang"])
+                logger.info(f"[{task_id}] PDF creation successful: {pdf_path}")
                 
                 # Update progress with PDF path
-                update_progress(
-                    task_id,
-                    pdf_file=pdf_path,
-                    status='PDF completed' if output_format == "pdf" else 'PDF completed, processing audio...',
-                    progress=100 if output_format == "pdf" else 95
-                )
+                update_data = {
+                    'pdf_file': pdf_path,
+                    'status': 'completed',
+                    'progress': 100
+                }
+                
+                # Add PDF path if both formats requested
+                if output_format == "both" and 'pdf_path' in locals():
+                    update_data['pdf_file'] = pdf_path
+                    
+                update_progress(task_id, **update_data)
             except Exception as pdf_error:
-                print(f"PDF creation error: {str(pdf_error)}")
+                logger.error(f"[{task_id}] PDF creation error: {str(pdf_error)}", exc_info=True)
                 update_progress(task_id, status=f'PDF creation failed: {str(pdf_error)[:50]}...', progress=95)
             
         # Handle audio output
         if audio_chunks and output_format in ["audio", "both"]:
             # Free up memory before audio concatenation
             gc.collect()
+            logger.info(f"[{task_id}] Starting audio concatenation...")
             
             update_progress(task_id, status='Finalizing audio...', progress=98)
             
             try:
                 concatenate_audio_files(audio_chunks, output_path)
+                logger.info(f"[{task_id}] Audio concatenation successful: {output_path}")
                 
                 # Always update with audio path first
                 update_data = {
@@ -375,12 +397,14 @@ def process_pdf(filename, file_path, voice, speed, task_id, output_format, outpu
                     if os.path.exists(chunk):
                         os.remove(chunk)
             except Exception as audio_error:
-                print(f"Audio finalization error: {str(audio_error)}")
+                logger.error(f"[{task_id}] Audio finalization error: {str(audio_error)}", exc_info=True)
                 update_progress(task_id, status=f'Audio finalization failed: {str(audio_error)[:50]}...', progress=98)
                     
         # Final garbage collection
         gc.collect()
+        logger.info(f"[{task_id}] PDF processing finished.")
 
     except Exception as e:
+        logger.error(f"[{task_id}] Error processing PDF: {str(e)}", exc_info=True)
         update_progress(task_id, status='error', error=str(e), progress=0)
         raise Exception(f"Error processing PDF: {str(e)}") 

@@ -115,26 +115,28 @@ def _delete_progress_file(task_id):
 def set_progress(task_id, data):
     """Store progress data in database with file fallback"""
     try:
-        # Ensure we're in an app context
+        # Ensure we're in an app context (caller's responsibility)
         if not has_app_context():
-            logger.info("No application context found. Creating a new app context.")
-            from app import create_app
-            app = create_app()
-            with app.app_context():
-                return _set_progress_internal(task_id, data)
-        else:
-            # Always save to file first as a reliable backup
-            _save_progress_to_file(task_id, data)
-            # Then try to save to database
-            return _set_progress_internal(task_id, data)
+            logger.error(f"[{task_id}] set_progress called without active app context!")
+            # Attempt file save as absolute fallback if no context
+            return _save_progress_to_file(task_id, data)
+
+        # Always save to file first as a reliable backup? Or save to DB first?
+        # Let's try DB first, then file on DB error.
+        db_success = _set_progress_internal(task_id, data)
+        if not db_success:
+            # If DB failed, ensure file save happens
+             logger.warning(f"[{task_id}] DB save failed, ensuring file save.")
+             return _save_progress_to_file(task_id, data)
+        return True # DB save was successful
+
     except Exception as e:
-        logger.error(f"Error setting progress: {str(e)}")
-        traceback.print_exc()
-        # Try file-based fallback
+        logger.error(f"[{task_id}] Error setting progress: {str(e)}", exc_info=True)
+        # Try file-based fallback on any unexpected error
         return _save_progress_to_file(task_id, data)
 
 def _set_progress_internal(task_id, data):
-    """Internal function to set progress with proper error handling"""
+    """Internal function to set progress with proper error handling. Assumes app context."""
     max_retries = 3
     retry_count = 0
     
@@ -161,6 +163,8 @@ def _set_progress_internal(task_id, data):
             # Commit changes
             database.session.commit()
             logger.info(f"Progress data saved to database for task {task_id}")
+            # Attempt to clean up the fallback file if DB save succeeds
+            _delete_progress_file(task_id)
             return True
         except Exception as e:
             retry_count += 1
@@ -172,44 +176,46 @@ def _set_progress_internal(task_id, data):
                 pass
             
             if retry_count >= max_retries:
-                logger.error(f"Max retries reached for database save. Falling back to file storage.")
-                # Always ensure we fall back to file storage
-                return _save_progress_to_file(task_id, data)
+                logger.error(f"[{task_id}] Max retries reached for database save. DB save failed.")
+                # Return False to indicate DB failure, set_progress will handle file fallback
+                return False
+    return False # Should not be reached ideally, but indicates failure
 
 def get_progress(task_id):
     """Get progress data from database with file fallback"""
+    db_data = None
     try:
-        # Try to load from file first for reliability
-        file_data = _load_progress_from_file(task_id)
-        
-        # Ensure we're in an app context for DB access
+        # Ensure we're in an app context (caller's responsibility)
         if not has_app_context():
-            logger.info("No application context found. Creating a new app context.")
-            from app import create_app
-            app = create_app()
-            with app.app_context():
-                db_data = _get_progress_internal(task_id)
-        else:
-            db_data = _get_progress_internal(task_id)
-        
-        # Prefer DB data if available, otherwise use file data
+             logger.error(f"[{task_id}] get_progress called without active app context!")
+             # Try loading from file if no context
+             return _load_progress_from_file(task_id)
+
+        # Try database first
+        db_data = _get_progress_internal(task_id)
+
         if db_data:
+            # Successfully retrieved from DB
             return db_data
-        
+
+        # If DB failed or returned None, try loading from file
+        logger.warning(f"[{task_id}] No data from DB, trying file fallback.")
+        file_data = _load_progress_from_file(task_id)
+
         if file_data:
-            logger.info(f"Using file-based progress data for task {task_id}")
+            logger.info(f"[{task_id}] Using file-based progress data for task {task_id}")
             return file_data
-            
-        logger.warning(f"No progress data found for task {task_id} in database or file storage")
+
+        logger.warning(f"[{task_id}] No progress data found for task {task_id} in database or file storage")
         return None
+
     except Exception as e:
-        logger.error(f"Error getting progress: {str(e)}")
-        traceback.print_exc()
-        # Fall back to file storage as last resort
+        logger.error(f"[{task_id}] Error getting progress: {str(e)}", exc_info=True)
+        # Fall back to file storage as last resort on unexpected error
         return _load_progress_from_file(task_id)
 
 def _get_progress_internal(task_id):
-    """Internal function to get progress with proper error handling"""
+    """Internal function to get progress with proper error handling. Assumes app context."""
     max_retries = 3
     retry_count = 0
     
@@ -232,37 +238,38 @@ def _get_progress_internal(task_id):
             logger.warning(f"Database error on attempt {retry_count}/{max_retries}: {str(e)}")
             
             if retry_count >= max_retries:
-                logger.error(f"Max retries reached for database query. Falling back to file storage.")
-                break
-                
+                logger.error(f"[{task_id}] Max retries reached for database query. DB read failed.")
+                # Return None, get_progress will handle file fallback
+                return None
+
             time.sleep(0.5)  # Brief pause before retry
     
-    # After max retries or on failure, fall back to file
+    # If loop finishes without returning (e.g., max retries hit), return None
     return None
 
 def delete_progress(task_id):
-    """Delete progress data from database with file fallback"""
+    """Delete progress data from database and file"""
+    db_deleted = False
     try:
-        # Always delete file backup to ensure cleanup
-        _delete_progress_file(task_id)
-        
-        # Ensure we're in an app context
+        # Ensure we're in an app context (caller's responsibility)
         if not has_app_context():
-            logger.info("No application context found. Creating a new app context.")
-            from app import create_app
-            app = create_app()
-            with app.app_context():
-                return _delete_progress_internal(task_id)
+            logger.error(f"[{task_id}] delete_progress called without active app context!")
+            # Still attempt file deletion even if context is missing
         else:
-            return _delete_progress_internal(task_id)
+             db_deleted = _delete_progress_internal(task_id)
+
+        # Always attempt to delete file backup regardless of DB result or context
+        file_deleted = _delete_progress_file(task_id)
+
+        return db_deleted or file_deleted # Return true if either deletion succeeded
+
     except Exception as e:
-        logger.error(f"Error deleting progress: {str(e)}")
-        traceback.print_exc()
-        # Try file-based fallback
+        logger.error(f"[{task_id}] Error deleting progress: {str(e)}", exc_info=True)
+        # Attempt file deletion on error
         return _delete_progress_file(task_id)
 
 def _delete_progress_internal(task_id):
-    """Internal function to delete progress with proper error handling"""
+    """Internal function to delete progress from DB. Assumes app context."""
     max_retries = 3
     retry_count = 0
     
@@ -304,10 +311,12 @@ def _delete_progress_internal(task_id):
 def update_progress(task_id, status=None, progress=None, error=None, **kwargs):
     """Update progress data in database"""
     try:
-        # Get existing data
+        # Get existing data using the corrected get_progress
+        # Note: This requires app context to read from DB first
         data = get_progress(task_id) or {}
-        
+
         # For debugging, log what we're updating
+        # (Ensure this call itself is within context if get_progress needs it)
         if status is not None or progress is not None or error is not None:
             logger.info(f"Updating task {task_id}: status={status}, progress={progress}, error={error}")
         

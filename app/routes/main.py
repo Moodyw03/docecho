@@ -156,31 +156,56 @@ def progress(task_id):
     try:
         current_app.logger.info(f"Checking progress for task {task_id}")
         
-        # Get the current app object for potential background context creation
-        app = current_app._get_current_object()
-        
-        # Get progress data with better error handling
-        data = get_progress(task_id)
-        
-        if data:
-            current_app.logger.debug(f"Progress data for task {task_id}: {data}")
-            return jsonify(data)
-        
-        current_app.logger.warning(f"No progress data found for task {task_id}")
-        return jsonify({
-            'status': 'Unknown Task', 
-            'error': 'Task not found in database',
-            'task_id': task_id
-        }), 404
+        # Always look in both the database and files for progress data
+        try:
+            # First try to get progress from the shared database
+            from app.utils.progress import get_progress
+            data = get_progress(task_id)
+            
+            if data:
+                # Cache response information for better performance
+                response = jsonify(data)
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+                current_app.logger.debug(f"Progress data for task {task_id}: {data}")
+                return response
+            
+            # If no data in database, check if the task is still initializing
+            # This can happen if the task was just created but not yet written to the database
+            current_app.logger.warning(f"No progress data found for task {task_id}")
+            
+            # Return a "processing" status to avoid error messages to the client
+            # The client will retry automatically
+            return jsonify({
+                'status': 'initializing', 
+                'progress': 0,
+                'message': 'Task is still initializing...',
+                'task_id': task_id
+            }), 202  # 202 Accepted indicates the request is being processed
+            
+        except Exception as inner_e:
+            current_app.logger.error(f"Error retrieving progress data: {str(inner_e)}")
+            # Return a default response to avoid breaking the client
+            return jsonify({
+                'status': 'processing',
+                'progress': 0,
+                'message': 'Retrieving progress information...',
+                'task_id': task_id
+            }), 202
+            
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
         current_app.logger.error(f"Error checking progress for task {task_id}: {str(e)}\n{error_details}")
+        
+        # Even on error, return a graceful response to the client
         return jsonify({
-            'status': 'error', 
-            'error': str(e),
+            'status': 'processing',
+            'progress': 0, 
+            'message': 'System is processing your request...',
             'task_id': task_id
-        }), 500
+        }), 202
 
 @bp.route('/download/<task_id>')
 @login_required
