@@ -492,6 +492,7 @@
         var formData = new FormData(this);
         
         try {
+            console.log("Submitting form...");
             const response = await fetch("/", {
                 method: "POST",
                 body: formData,
@@ -502,6 +503,7 @@
             });
 
             if (response.redirected) {
+                console.log("Response was redirected to:", response.url);
                 window.location.href = response.url;
                 return;
             }
@@ -516,14 +518,33 @@
                 throw new Error('Insufficient credits. Please purchase more credits.');
             }
 
-            const data = await response.json();
+            // Get the response text first for logging
+            const responseText = await response.text();
+            console.log("Response received:", responseText);
+            
+            // Try to parse as JSON
+            let data;
+            try {
+                data = JSON.parse(responseText);
+                console.log("Parsed JSON data:", data);
+            } catch (parseError) {
+                console.error("Error parsing JSON:", parseError);
+                statusMessage.textContent = "Error: Invalid response from server";
+                return;
+            }
             
             if (data.error) {
                 throw new Error(data.error);
             }
             
             if (data.task_id) {
+                console.log("Task ID received:", data.task_id);
+                statusMessage.textContent = "Processing started. Tracking progress...";
+                // Start tracking progress
                 checkProgress(data.task_id);
+            } else {
+                statusMessage.textContent = "Error: No task ID received";
+                console.error("No task_id in response:", data);
             }
         } catch (error) {
             statusMessage.textContent = "Error: " + error.message;
@@ -533,6 +554,46 @@
 
     function checkProgress(taskId) {
         console.log(`Checking progress for task: ${taskId}`);
+        
+        // Reset retry count when starting a new progress check
+        window.progressRetryCount = 0;
+        
+        // Show task info for debugging purposes
+        const statusMessage = document.getElementById("statusMessage");
+        if (statusMessage) {
+            statusMessage.innerHTML = `Processing started. Task ID: <span style="font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 3px;">${taskId}</span>`;
+        }
+        
+        // Add direct links to status and downloads
+        const progressContainer = document.getElementById("progressContainer");
+        if (progressContainer) {
+            // Check if task info container already exists
+            let taskInfoContainer = document.getElementById("taskInfoContainer");
+            if (!taskInfoContainer) {
+                taskInfoContainer = document.createElement("div");
+                taskInfoContainer.id = "taskInfoContainer";
+                taskInfoContainer.style.marginTop = "0.5rem";
+                taskInfoContainer.style.textAlign = "center";
+                taskInfoContainer.style.fontSize = "0.8rem";
+                taskInfoContainer.style.color = "#666";
+                progressContainer.appendChild(taskInfoContainer);
+            }
+            
+            taskInfoContainer.innerHTML = `
+                <div style="margin-top: 5px;">
+                    <a href="/progress/${taskId}" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">View Status</a>
+                    <a href="/downloads/${taskId}" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">Downloads Page</a>
+                </div>
+            `;
+        }
+        
+        // Start progress checking
+        pollProgress(taskId);
+    }
+    
+    function pollProgress(taskId) {
+        console.log(`Polling progress for task: ${taskId}, attempt: ${window.progressRetryCount || 0 + 1}`);
+        
         fetch(`/progress/${taskId}`)
             .then(response => {
                 if (!response.ok) {
@@ -543,9 +604,19 @@
                         throw new Error(data.error || `Server error: ${response.status}`);
                     });
                 }
-                return response.json();
+                return response.text().then(text => {
+                    console.log("Progress response text:", text);
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.error("Error parsing progress JSON:", e);
+                        throw new Error("Invalid progress data format");
+                    }
+                });
             })
             .then(data => {
+                console.log("Progress data:", data);
+                
                 const progressContainer = document.getElementById("progressContainer");
                 const statusMessage = document.getElementById("statusMessage");
                 const progressBarFill = document.getElementById("progressBarFill");
@@ -561,7 +632,7 @@
                 }
                 
                 progressBarFill.style.width = `${data.progress}%`;
-                statusMessage.textContent = data.status;
+                statusMessage.textContent = data.status || "Processing...";
                 
                 if (data.status === 'completed' || data.status.startsWith('Warning')) {
                     const outputFormat = document.getElementById("output_format").value;
@@ -690,11 +761,31 @@
                 if (retryCount < 5) {
                     window.progressRetryCount = retryCount + 1;
                     console.log(`Retrying progress check (${window.progressRetryCount}/5)...`);
-                    setTimeout(() => checkProgress(taskId), 3000);
+                    // Use increasing backoff delay
+                    const backoffDelay = 1000 + (retryCount * 500); // 1s, 1.5s, 2s, 2.5s, 3s
+                    setTimeout(() => pollProgress(taskId), backoffDelay);
                 } else {
                     console.log('Max retries reached, giving up');
                     if (statusMessage) {
-                        statusMessage.textContent = "Error: Could not track progress after multiple attempts. Please try again.";
+                        const downloadLink = `/downloads/${taskId}`;
+                        statusMessage.innerHTML = `Error tracking progress. <a href="${downloadLink}" style="color:#10a37f;">Try the downloads page</a>.`;
+                    }
+                    
+                    // Add a direct download button as fallback
+                    const progressContainer = document.getElementById("progressContainer");
+                    if (progressContainer) {
+                        let downloadContainer = document.getElementById("downloadContainer");
+                        if (!downloadContainer) {
+                            downloadContainer = document.createElement("div");
+                            downloadContainer.id = "downloadContainer";
+                            downloadContainer.style.marginTop = "1rem";
+                            downloadContainer.style.textAlign = "center";
+                            progressContainer.appendChild(downloadContainer);
+                        }
+                        
+                        downloadContainer.innerHTML = `
+                            <a href="/downloads/${taskId}" class="btn">Go to Downloads Page</a>
+                        `;
                     }
                 }
             });

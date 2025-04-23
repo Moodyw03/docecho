@@ -524,3 +524,45 @@ def download_page(task_id):
         current_app.logger.error(f"Error generating download page for task {task_id}: {str(e)}")
         flash("An error occurred. Please try again.", "error")
         return redirect(url_for('main.index'))
+
+@bp.route('/direct-download/<task_id>/<file_type>')
+@login_required
+def direct_download(task_id, file_type):
+    """
+    A simplified direct download route without JavaScript redirection
+    This is useful for debugging and when regular download mechanisms fail
+    """
+    try:
+        current_app.logger.info(f"Direct download requested for task {task_id}, file type {file_type}")
+        
+        if file_type not in ['audio', 'pdf']:
+            return "Invalid file type. Must be 'audio' or 'pdf'.", 400
+            
+        data = get_progress(task_id)
+        if not data:
+            return "Task not found. It may have expired.", 404
+            
+        if data.get('status') != 'completed' and not data.get('status', '').startswith('Warning'):
+            return f"Task not ready. Current status: {data.get('status')}", 400
+            
+        file_key = f"{file_type}_file"
+        if file_key not in data:
+            return f"No {file_type} file available for this task.", 404
+            
+        file_path = data[file_key]
+        if not os.path.exists(file_path):
+            return f"File does not exist at path: {file_path}", 404
+            
+        original_filename = os.path.basename(file_path)
+        download_name = f"{os.path.splitext(original_filename)[0]}_{task_id[:6]}{os.path.splitext(original_filename)[1]}"
+        
+        return send_file(
+            file_path,
+            mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf',
+            as_attachment=True,
+            download_name=download_name
+        )
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in direct download: {e}")
+        return f"Error: {str(e)}", 500

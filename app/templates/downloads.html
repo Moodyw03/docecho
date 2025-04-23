@@ -103,6 +103,25 @@
         {% endif %}
     </div>
     
+    <div style="margin-top: 20px; text-align: center;">
+        <p style="font-size: 0.9rem; color: #666;">
+            If the downloads above don't work, try these direct links:
+        </p>
+        <div style="margin-top: 10px;">
+            {% if download_links.audio %}
+            <a href="/direct-download/{{ task_id }}/audio" style="color: #10a37f; margin: 0 10px; text-decoration: underline;">
+                Direct Audio Download
+            </a>
+            {% endif %}
+            
+            {% if download_links.pdf %}
+            <a href="/direct-download/{{ task_id }}/pdf" style="color: #10a37f; margin: 0 10px; text-decoration: underline;">
+                Direct PDF Download
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    
     <a href="{{ url_for('main.index') }}" class="back-btn">Back to Home</a>
 </div>
 {% endblock %} 
