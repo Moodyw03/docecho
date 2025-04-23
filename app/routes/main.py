@@ -44,10 +44,14 @@ def process_file():
             # Get the current app
             app = current_app._get_current_object()
             
-            # Save the uploaded file with safe filename
+            # Save the uploaded file using the configured UPLOAD_FOLDER
             safe_filename = secure_filename(file.filename)
-            file_path = os.path.join(app.root_path, 'static', 'uploads', safe_filename)
+            upload_folder = current_app.config['UPLOAD_FOLDER']
+            # Ensure the upload folder exists (especially for local dev)
+            os.makedirs(upload_folder, exist_ok=True)
+            file_path = os.path.join(upload_folder, safe_filename)
             file.save(file_path)
+            current_app.logger.info(f"File saved to: {file_path}")
             
             voice = request.form.get("voice", "en")
             output_format = request.form.get("output_format", "audio")
@@ -69,13 +73,11 @@ def process_file():
                     db.session.commit()
                     current_app.logger.info(f"Deducted {required_credits} credits from user {user_id}")
             
-            # Generate output filename base (task ID will be added by process_pdf if needed)
-            output_filename_base = f"{os.path.splitext(safe_filename)[0]}"
-            # The final path depends on where process_pdf saves it.
-            # We need to ensure process_pdf generates the correct final output_path
-            # Let's define the intended final output directory
-            final_output_dir = os.path.join(app.root_path, 'static', 'output')
-            # The final filename will be constructed within the task.
+            # Let's define the intended final output directory using config
+            final_output_dir = current_app.config['OUTPUT_FOLDER']
+            # Ensure the output folder exists
+            os.makedirs(final_output_dir, exist_ok=True)
+            # The final filename will be constructed within the task based on this dir.
 
             # Store parameters needed for processing
             process_params = {
@@ -84,7 +86,7 @@ def process_file():
                 'voice': voice,
                 'speed': speed,
                 'output_format': output_format,
-                'output_path': final_output_dir # Pass the target directory
+                'output_path': final_output_dir # Pass the configured output directory
             }
 
             # Log the parameters for debugging

@@ -100,7 +100,7 @@ def create_app():
     
     # Add HTTPS enforcement in production
     @app.before_request
-    def enforce_https():
+    def  enforce_https():
         if os.environ.get('FLASK_ENV') == 'production':
             if not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
                 url = request.url.replace('http://', 'https://', 1)

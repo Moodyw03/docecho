@@ -14,6 +14,7 @@ import threading
 import concurrent.futures
 import requests
 import logging
+from flask import current_app # Import current_app to access config (alternative: pass config values)
 
 # Add logger instance
 logger = logging.getLogger(__name__)
@@ -73,14 +74,16 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=200):
     except Exception as e:
         raise Exception(f"Error extracting text from PDF: {e}")
 
-def convert_text_to_audio(text, output_filename, voice, speed, tld='com'):
+def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, tld='com'):
     try:
-        temp_dir = os.path.join(os.getcwd(), 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        
-        temp_output = os.path.join(temp_dir, output_filename.replace(".mp3", "_temp.mp3"))
-        output_path = os.path.join(temp_dir, output_filename)
-        
+        # Use the provided temp_directory instead of os.getcwd()
+        # temp_dir = os.path.join(os.getcwd(), 'temp') # Remove this line
+        os.makedirs(temp_directory, exist_ok=True) # Ensure the passed temp_directory exists
+
+        temp_output = os.path.join(temp_directory, output_filename.replace(".mp3", "_temp.mp3"))
+        # Rename confusing variable name
+        temp_audio_chunk_path = os.path.join(temp_directory, output_filename) 
+
         # Add timeout/retry logic for gTTS
         max_retries = 3
         for attempt in range(max_retries):
@@ -97,14 +100,19 @@ def convert_text_to_audio(text, output_filename, voice, speed, tld='com'):
         if speed != 1.0:
             sound = AudioSegment.from_file(temp_output)
             sound = sound.speedup(playback_speed=speed)
-            sound.export(output_path, format="mp3")
+            # Export to the correctly named variable
+            sound.export(temp_audio_chunk_path, format="mp3") 
             if os.path.exists(temp_output):
                 os.remove(temp_output)
         else:
-            os.rename(temp_output, output_path)
+            # Rename to the correctly named variable
+            os.rename(temp_output, temp_audio_chunk_path)
 
-        return output_path
+        # Return the path to the created chunk
+        return temp_audio_chunk_path 
     except Exception as e:
+        # Consider logging the specific error and filename
+        logger.error(f"Error converting text to audio for chunk {output_filename}: {e}")
         raise Exception(f"Error converting text to audio: {e}")
 
 def concatenate_audio_files(audio_files, output_path):
@@ -181,19 +189,22 @@ def translate_with_timeout(translator, text, dest, timeout=10):
     return result, None
 
 @celery.task(bind=True)
-def process_pdf(self, filename, file_path, voice, speed, output_format, output_path):
+def process_pdf(self, filename, file_path, voice, speed, output_format, output_path, temp_path):
     # Use self.request.id as the task_id
     task_id = self.request.id
     try:
         # Force garbage collection at start
         gc.collect()
         logger.info(f"[{task_id}] Starting PDF processing for: {filename}")
+        logger.info(f"[{task_id}] Input file path: {file_path}")
+        logger.info(f"[{task_id}] Output base path: {output_path}")
+        logger.info(f"[{task_id}] Temp base path: {temp_path}")
 
-        # Create temp and output directories
-        output_dir = os.path.dirname(output_path)
-        temp_dir = os.path.join(output_dir, 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        os.makedirs(output_dir, exist_ok=True)
+        # Create temp and output directories if they don't exist (using configured paths)
+        # output_dir = os.path.dirname(output_path) # Remove this
+        # temp_dir = os.path.join(output_dir, 'temp') # Remove this
+        os.makedirs(temp_path, exist_ok=True) # Use temp_path argument
+        os.makedirs(output_path, exist_ok=True) # Use output_path argument
 
         update_progress(task_id, status='Extracting text from PDF...', progress=0)
         text_chunks = extract_text_chunks_from_pdf(file_path)
@@ -205,212 +216,120 @@ def process_pdf(self, filename, file_path, voice, speed, output_format, output_p
         logger.info(f"[{task_id}] Extracted {total_chunks} text chunks.")
         # Use the original translator
         translator = Translator()
-        # Reduce batch size for better memory management
-        batch_size = 2
-        audio_chunks = []
-        translated_text = []
-        
-        lang_settings = language_map.get(voice, {"lang": "en", "tld": "com"})
-        
-        for batch_start in range(0, total_chunks, batch_size):
-            # Garbage collection between batches
-            gc.collect()
-            
-            batch_end = min(batch_start + batch_size, total_chunks)
-            batch = text_chunks[batch_start:batch_end]
-            
-            # Track if this is the last batch
-            is_last_batch = batch_end == total_chunks
-            
-            for i, chunk in enumerate(batch):
-                chunk_index = batch_start + i
-                is_last_chunk = (chunk_index == total_chunks - 1)
-                overall_progress = int((chunk_index / total_chunks) * 100)
-                
-                # More detailed status reporting
-                chunk_message = f'Processing chunk {chunk_index + 1} of {total_chunks}'
-                if is_last_chunk:
-                    chunk_message += ' (final chunk)'
-                
-                logger.info(f"[{task_id}] {chunk_message}")
+        audio_files = []
 
-                update_progress(
-                    task_id,
-                    status=chunk_message,
-                    progress=overall_progress
-                )
+        # Use ThreadPoolExecutor for parallel audio conversion
+        # Define max workers based on CPU or a fixed number
+        max_workers = min(8, os.cpu_count() or 1) 
+        logger.info(f"[{task_id}] Using {max_workers} workers for audio conversion.")
 
-                try:
-                    # Add delay to avoid API rate limits
-                    time.sleep(1)  # Increased from 0.5
-                    
-                    logger.info(f"[{task_id}] Translating chunk {chunk_index + 1}...")
-                    # Use the timeout version of translate
-                    translated_chunk, error = translate_with_timeout(
-                        translator, 
-                        chunk, 
-                        lang_settings["lang"],
-                        timeout=15  # 15 second timeout for translation
-                    )
-                    
-                    # Handle translation error/timeout
-                    if error:
-                        logger.error(f"[{task_id}] Translation error on chunk {chunk_index + 1}: {str(error)}")
-                        # Fallback for translation failure
-                        translated_chunk = chunk  # Use original text as fallback
-                        update_progress(
-                            task_id,
-                            status=f'Warning: Using original text for chunk {chunk_index + 1} (translation failed)',
-                            progress=overall_progress
-                        )
-                        logger.info(f"[{task_id}] Translation successful for chunk {chunk_index + 1}.")
-                    
-                    # Add extra timeout after the last chunk translation
-                    if is_last_chunk:
-                        time.sleep(1)  # Extra delay for last chunk
-                    
-                    translated_text.append(translated_chunk)
-                    
-                    # Clear the original chunk from memory
-                    chunk = None
-                    
-                    if output_format in ["audio", "both"]:
-                        # Add delay to avoid gTTS API rate limits
-                        time.sleep(1)  # Increased from 0.5
-                        
-                        chunk_filename = f"{task_id}_chunk_{chunk_index}.mp3"
-                        
-                        logger.info(f"[{task_id}] Converting chunk {chunk_index + 1} to audio...")
-                        # Add timeout handling for audio conversion
-                        try:
-                            audio_chunk_path = convert_text_to_audio(
-                                translated_chunk,
-                                chunk_filename,
-                                lang_settings["lang"],
-                                speed,
-                                lang_settings["tld"]
-                            )
-                            audio_chunks.append(audio_chunk_path)
-                            logger.info(f"[{task_id}] Audio conversion successful for chunk {chunk_index + 1}.")
-                            
-                            # Extra delay after the last chunk audio conversion
-                            if is_last_chunk:
-                                time.sleep(1)  # Extra delay for last chunk
-                                
-                        except Exception as audio_error:
-                            logger.error(f"[{task_id}] Audio conversion error on chunk {chunk_index + 1}: {str(audio_error)}")
-                            # Continue without this audio chunk
-                            update_progress(
-                                task_id,
-                                status=f'Warning: Skipped audio for chunk {chunk_index + 1} due to error',
-                                progress=overall_progress
-                            )
-                            continue
-                        
-                        # Clear the translated chunk to free memory
-                        translated_chunk = None
-                        
-                        # Garbage collection after each audio processing
-                        gc.collect()
+        # Pass the correct tld based on the voice
+        lang_details = language_map.get(voice, {"lang": voice, "tld": "com"})
+        tld = lang_details['tld']
+        lang_code = lang_details['lang'] # Use this for gTTS lang parameter
 
-                except Exception as e:
-                    # Log error but continue
-                    logger.error(f"[{task_id}] Error processing chunk {chunk_index + 1}: {str(e)}", exc_info=True)
-                    # Update progress to show error on specific chunk
-                    update_progress(
-                        task_id,
-                        status=f'Error on chunk {chunk_index + 1}: {str(e)[:50]}...',
-                        progress=overall_progress
-                    )
-                    # Add delay before continuing to next chunk
-                    time.sleep(2)  # Increased from 1
+        # Process chunks in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+            for i, chunk in enumerate(text_chunks):
+                 # Check if chunk is empty or whitespace
+                if not chunk or chunk.isspace():
+                    logger.warning(f"[{task_id}] Skipping empty chunk {i}.")
                     continue
-            
-            # Clean up batch to free memory
-            batch = None
-            gc.collect()
-            
-            # Add checkpoint progress update after each batch
-            update_progress(
-                task_id,
-                status=f'Completed batch {batch_end}/{total_chunks}',
-                progress=int((batch_end / total_chunks) * 100)
-            )
-            
-            # Add a small delay between batches to prevent API overload
-            time.sleep(2)
+                
+                # Submit task to convert text to audio
+                output_filename=f"chunk_{i}.mp3"
+                # Pass temp_path to convert_text_to_audio
+                futures.append(executor.submit(convert_text_to_audio, chunk, output_filename, lang_code, speed, temp_path, tld))
+                time.sleep(0.1) # Small delay to avoid overwhelming API/System
 
-        # Handle PDF output
-        if output_format in ["pdf", "both"]:
-            # Free up some memory before PDF generation
-            gc.collect()
-            logger.info(f"[{task_id}] Starting PDF creation...")
+            # Collect results as they complete
+            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+                try:
+                    audio_chunk_path = future.result()
+                    if audio_chunk_path:
+                        audio_files.append(audio_chunk_path)
+                        progress = int(((i + 1) / total_chunks) * 90) # Progress up to 90%
+                        update_progress(task_id, status=f"Processing chunk {i+1}/{total_chunks}...", progress=progress)
+                    else:
+                         logger.warning(f"[{task_id}] Chunk {i} conversion resulted in None path.")
+                except Exception as e:
+                    logger.error(f"[{task_id}] Error processing chunk {i}: {e}")
+                    # Decide if you want to stop the whole task or just skip this chunk
+                    # For now, log error and continue
+                    update_progress(task_id, status=f"Error processing chunk {i+1}, skipping...", progress=progress)
+
+
+        # Sort audio files based on chunk index to ensure correct order
+        audio_files.sort(key=lambda f: int(os.path.basename(f).split('_')[1].split('.')[0]))
+        logger.info(f"[{task_id}] Number of successfully converted audio chunks: {len(audio_files)}")
+
+        if not audio_files and output_format == 'audio':
+             raise Exception("No audio chunks were successfully converted.")
+
+
+        if output_format == 'audio':
+            update_progress(task_id, status='Concatenating audio files...', progress=90)
+            # Construct final path using output_path directly
+            final_output_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
+            logger.info(f"[{task_id}] Concatenating audio to: {final_output_path}")
+            concatenate_audio_files(audio_files, final_output_path)
+        elif output_format == 'text':
+            update_progress(task_id, status='Generating text file...', progress=90)
+            # Construct final path using output_path directly
+            final_output_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.txt")
+            logger.info(f"[{task_id}] Writing text file to: {final_output_path}")
+            full_text = '\n'.join(text_chunks)
+            with open(final_output_path, 'w', encoding='utf-8') as f:
+                f.write(full_text)
+        elif output_format == 'pdf':
+            update_progress(task_id, status='Translating text and creating PDF...', progress=90)
+            # Construct final path using output_path directly
+            final_output_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
+            logger.info(f"[{task_id}] Writing translated PDF to: {final_output_path}")
+
+            full_text = '\n'.join(text_chunks)
             
-            update_progress(task_id, status='Creating PDF file...', progress=95)
-            
-            base_filename = os.path.splitext(os.path.basename(filename))[0]
-            pdf_filename = f"{base_filename}_translated_{task_id}.pdf"
-            pdf_path = os.path.join(output_dir, pdf_filename)
-            
+            # Translate the entire text at once - consider chunking if too large
             try:
-                create_translated_pdf('\n'.join(translated_text), pdf_path, lang_settings["lang"])
-                logger.info(f"[{task_id}] PDF creation successful: {pdf_path}")
+                update_progress(task_id, status='Translating text...', progress=92)
+                # Use the language code extracted from the map
+                translated_text, error = translate_with_timeout(translator, full_text, dest=lang_code, timeout=180) # Increased timeout
+                if error:
+                    raise Exception(f"Translation failed: {error}")
+                if not translated_text:
+                    raise Exception("Translation returned empty result.")
+
+                update_progress(task_id, status='Creating translated PDF...', progress=95)
+                create_translated_pdf(translated_text, final_output_path, language_code=lang_code)
+
+            except Exception as e:
+                logger.error(f"[{task_id}] Error during PDF translation/creation: {e}")
+                raise Exception(f"Failed to create translated PDF: {e}")
                 
-                # Update progress with PDF path
-                update_data = {
-                    'pdf_file': pdf_path,
-                    'status': 'completed',
-                    'progress': 100
-                }
-                
-                # Add PDF path if both formats requested
-                if output_format == "both" and 'pdf_path' in locals():
-                    update_data['pdf_file'] = pdf_path
-                    
-                update_progress(task_id, **update_data)
-            except Exception as pdf_error:
-                logger.error(f"[{task_id}] PDF creation error: {str(pdf_error)}", exc_info=True)
-                update_progress(task_id, status=f'PDF creation failed: {str(pdf_error)[:50]}...', progress=95)
-            
-        # Handle audio output
-        if audio_chunks and output_format in ["audio", "both"]:
-            # Free up memory before audio concatenation
-            gc.collect()
-            logger.info(f"[{task_id}] Starting audio concatenation...")
-            
-            update_progress(task_id, status='Finalizing audio...', progress=98)
-            
+        # Cleanup temporary audio files
+        logger.info(f"[{task_id}] Cleaning up temporary files from: {temp_path}")
+        for temp_file in audio_files:
             try:
-                concatenate_audio_files(audio_chunks, output_path)
-                logger.info(f"[{task_id}] Audio concatenation successful: {output_path}")
-                
-                # Always update with audio path first
-                update_data = {
-                    'audio_file': output_path,
-                    'status': 'completed',
-                    'progress': 100
-                }
-                
-                # Add PDF path if both formats requested
-                if output_format == "both" and 'pdf_path' in locals():
-                    update_data['pdf_file'] = pdf_path
-                    
-                update_progress(task_id, **update_data)
-                
-                # Clean up temporary files
-                for chunk in audio_chunks:
-                    if os.path.exists(chunk):
-                        os.remove(chunk)
-            except Exception as audio_error:
-                logger.error(f"[{task_id}] Audio finalization error: {str(audio_error)}", exc_info=True)
-                update_progress(task_id, status=f'Audio finalization failed: {str(audio_error)[:50]}...', progress=98)
-                    
-        # Final garbage collection
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                    # logger.debug(f"[{task_id}] Removed temp file: {temp_file}") # Optional debug logging
+            except Exception as e:
+                logger.warning(f"[{task_id}] Could not remove temporary file {temp_file}: {e}")
+
+        # Force garbage collection again
         gc.collect()
-        logger.info(f"[{task_id}] PDF processing finished.")
+        
+        logger.info(f"[{task_id}] PDF processing finished successfully. Output: {final_output_path}")
+        update_progress(task_id, status='Completed', progress=100)
+        return final_output_path # Return the path to the final output
 
     except Exception as e:
-        logger.error(f"[{task_id}] Error processing PDF: {str(e)}", exc_info=True)
-        update_progress(task_id, status='error', error=str(e), progress=0)
+        # Log the exception with traceback for better debugging
+        logger.exception(f"[{task_id}] Error processing PDF {filename}: {e}") 
+        # Update progress with error status
+        update_progress(task_id, status=f'Error: {e}', progress=100, error=True)
+        # Force garbage collection on error
+        gc.collect()
         # Re-raise the exception so Celery knows the task failed
         raise 
