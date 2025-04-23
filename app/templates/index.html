@@ -737,9 +737,9 @@
                     // For 'both' format with PDF failure, only download audio
                     if (outputFormat === "both" && hasPDFFailure) {
                         statusMessage.textContent = "PDF generation failed, downloading audio only...";
-                        var timestamp = new Date().getTime();
-                        console.log("Redirecting to:", "/download/" + taskId + "?type=audio&final=true&t=" + timestamp);
-                        window.location.href = "/download/" + taskId + "?type=audio&final=true&t=" + timestamp;
+                        const audioTimestamp = new Date().getTime();
+                        console.log("Redirecting to:", "/download/" + taskId + "?type=audio&final=true&t=" + audioTimestamp);
+                        window.location.href = "/download/" + taskId + "?type=audio&final=true&t=" + audioTimestamp;
                         return;
                     }
                     
@@ -757,7 +757,7 @@
                             // Then trigger PDF download after a longer delay to ensure both downloads work
                             setTimeout(() => {
                                 // Add a timestamp to prevent caching
-                                var pdfTimestamp = new Date().getTime();
+                                const pdfTimestamp = new Date().getTime();
                                 console.log("Redirecting to PDF:", "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp);
                                 window.location.href = "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp;
                                 // Change status message to indicate completion
@@ -769,14 +769,14 @@
                             statusMessage.textContent = "Error downloading audio. Please use the buttons below.";
                         };
                         // Add a timestamp to prevent caching
-                        var timestamp = new Date().getTime();
-                        console.log("Loading audio iframe:", "/download/" + taskId + "?type=audio&final=false&t=" + timestamp);
-                        audioIframe.src = "/download/" + taskId + "?type=audio&final=false&t=" + timestamp;
+                        const iframeTimestamp = new Date().getTime();
+                        console.log("Loading audio iframe:", "/download/" + taskId + "?type=audio&final=false&t=" + iframeTimestamp);
+                        audioIframe.src = "/download/" + taskId + "?type=audio&final=false&t=" + iframeTimestamp;
                         document.body.appendChild(audioIframe);
                     } else {
                         // For single file formats (audio, pdf, text)
                         // Add a timestamp to prevent caching
-                        var finalTimestamp = new Date().getTime();
+                        const finalTimestamp = new Date().getTime();
                         console.log("Redirecting to:", "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp);
                         window.location.href = "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp;
                         // Change status message to indicate completion
