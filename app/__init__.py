@@ -9,11 +9,8 @@ from app.config import Config
 import threading
 import time
 import copy
-from app.extensions import db, login_manager, mail, init_db
-
-# Initialize extensions without the app
-db = SQLAlchemy()
-login_manager = LoginManager()
+from app.extensions import login_manager, init_extensions
+from flask_mail import Mail
 
 # Background task for cleaning up expired progress records
 def cleanup_expired_progress(app):
@@ -59,15 +56,28 @@ def create_app():
     print(f"Mail Server configured: {'Yes' if app.config.get('MAIL_SERVER') else 'No'}")
     print(f"Mail Default Sender configured: {'Yes' if app.config.get('MAIL_DEFAULT_SENDER') else 'No'}")
     
-    # Configure database
+    # Instantiate extensions locally within create_app
+    db = SQLAlchemy()
+    mail = Mail()
+
+    # Store extensions on app.extensions *before* initializing them
+    # Flask-SQLAlchemy uses the key 'sqlalchemy'
+    app.extensions['sqlalchemy'] = db
+    app.extensions['mail'] = mail
+
+    # Configure database (needs to happen before init_extensions)
     configure_database(app)
-    
+
     # Set up static folders
     configure_static_folders(app)
-    
-    # Initialize extensions - IMPORTANT: Initialize db first before other extensions
-    init_db(app)  # Use the init_db function from extensions.py
-    
+
+    # Initialize extensions using the function from extensions.py
+    # This will call db.init_app(app), mail.init_app(app), etc.
+    init_extensions(app)
+
+    # Initialize Migrate *after* db has been initialized with the app
+    migrate = Migrate(app, db)
+
     # Create progress directory
     with app.app_context():
         progress_dir = os.path.join(app.root_path, 'static', 'progress')
@@ -76,12 +86,6 @@ def create_app():
         # Ensure email templates directory exists
         email_templates_dir = os.path.join(app.root_path, 'templates', 'email')
         os.makedirs(email_templates_dir, exist_ok=True)
-    
-    # Initialize other extensions after db
-    migrate = Migrate(app, db)
-    login_manager.init_app(app)
-    login_manager.login_view = 'auth.login'
-    mail.init_app(app)
     
     # Register blueprints and initialize models
     with app.app_context():

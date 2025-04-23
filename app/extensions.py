@@ -8,15 +8,23 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize extensions
-db = SQLAlchemy()
+# Initialize extensions - REMOVE global db and mail instances
+# db = SQLAlchemy()
 login_manager = LoginManager()
-mail = Mail()
+# mail = Mail()
 
-def init_db(app):
-    """Initialize database with the Flask app"""
+def init_extensions(app):
+    """Initialize extensions with the Flask app. db and mail are created in create_app."""
+    # Initialize extensions stored on app.extensions
+    db = app.extensions['sqlalchemy']
+    mail = app.extensions['mail']
+
     db.init_app(app)
-    
+    login_manager.init_app(app) # login_manager can still be global
+    mail.init_app(app)
+
+    login_manager.login_view = 'auth.login'
+
     # Log database connection info
     logger.info(f"Database initialized with URI type: {app.config['SQLALCHEMY_DATABASE_URI'].split(':')[0]}")
     
@@ -31,10 +39,21 @@ def init_db(app):
         }
 
 def get_db():
-    """Helper function to get the globally defined db instance. Assumes app context exists."""
-    # Caller is responsible for ensuring app context
-    # No longer creates temporary context
-    return db
+    """Helper function to get the db instance from the current app context."""
+    from flask import current_app, has_app_context
 
-# Add this to make db explicitly available for import
-__all__ = ['db', 'get_db']
+    if not has_app_context():
+        # This should ideally not happen if called correctly
+        logger.error("get_db called without active app context!")
+        raise RuntimeError("Application context required to get DB instance.")
+
+    # Retrieve db from app extensions
+    try:
+        # SQLAlchemy 3.x stores the extension instance directly
+        return current_app.extensions['sqlalchemy']
+    except KeyError:
+        logger.error("SQLAlchemy extension not found in current_app.extensions")
+        raise RuntimeError("SQLAlchemy not initialized for this app context.")
+
+# Update exports
+__all__ = ['login_manager', 'get_db']
