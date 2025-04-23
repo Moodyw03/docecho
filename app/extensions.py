@@ -8,19 +8,20 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize extensions globally (except Mail which needs config first)
+# Initialize extensions globally
 db = SQLAlchemy()
 login_manager = LoginManager()
-# mail = Mail() # Keep Mail instantiation in create_app
+mail = Mail() # Add global mail instance back
 
 def init_extensions(app):
-    """Initialize non-DB extensions. DB is initialized in create_app before Migrate."""
+    """Initialize non-DB extensions using instances stored on app."""
     # Retrieve mail instance stored in create_app
-    mail = app.extensions['mail']
+    # This ensures mail is initialized with the correct app config
+    mail_instance_from_app = app.extensions['mail']
 
-    # Initialize login_manager (global) and mail (passed via app.extensions)
+    # Initialize login_manager (global) and mail (using instance from app)
     login_manager.init_app(app)
-    mail.init_app(app)
+    mail_instance_from_app.init_app(app)
 
     login_manager.login_view = 'auth.login'
 
@@ -33,4 +34,4 @@ def get_db():
     return db
 
 # Update exports
-__all__ = ['db', 'login_manager', 'get_db'] # Add db back
+__all__ = ['db', 'login_manager', 'mail', 'get_db'] # Add mail back
