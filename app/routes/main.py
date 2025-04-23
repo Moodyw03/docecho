@@ -75,8 +75,11 @@ def process_file():
             
             # Let's define the intended final output directory using config
             final_output_dir = current_app.config['OUTPUT_FOLDER']
-            # Ensure the output folder exists
+            # Define the temporary directory using config
+            temp_dir = current_app.config['TEMP_FOLDER'] 
+            # Ensure the output and temp folders exist
             os.makedirs(final_output_dir, exist_ok=True)
+            os.makedirs(temp_dir, exist_ok=True) 
             # The final filename will be constructed within the task based on this dir.
 
             # Store parameters needed for processing
@@ -86,7 +89,8 @@ def process_file():
                 'voice': voice,
                 'speed': speed,
                 'output_format': output_format,
-                'output_path': final_output_dir # Pass the configured output directory
+                'output_path': final_output_dir, # Pass the configured output directory
+                'temp_path': temp_dir # Pass the configured temporary directory
             }
 
             # Log the parameters for debugging
