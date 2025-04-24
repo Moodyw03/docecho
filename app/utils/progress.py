@@ -185,6 +185,14 @@ def get_progress(task_id):
     """Get progress data from database with file fallback"""
     db_data = None
     try:
+        # Try removing session *before* attempting read
+        if has_app_context():
+            try:
+                db.session.remove() 
+                logger.debug(f"[{task_id}] Explicitly removed session before get_progress DB read.")
+            except Exception as remove_err:
+                 logger.warning(f"[{task_id}] Error removing session in get_progress: {remove_err}")
+        
         # Ensure we're in an app context (caller's responsibility)
         if not has_app_context():
              logger.error(f"[{task_id}] get_progress called without active app context!")
@@ -311,9 +319,9 @@ def _delete_progress_internal(task_id):
 def update_progress(task_id, status=None, progress=None, error=None, **kwargs):
     """Update progress data in database"""
     try:
-        # Get existing data using the corrected get_progress
-        # Note: This requires app context to read from DB first
-        data = get_progress(task_id) or {}
+        # REMOVED: get_progress call here. We will construct the full data dict directly.
+        # data = get_progress(task_id) or {}
+        data = {}
 
         # For debugging, log what we're updating
         # (Ensure this call itself is within context if get_progress needs it)
