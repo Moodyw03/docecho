@@ -468,6 +468,9 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         logger.info(f"[{task_id}] Task completed locally. Preparing for Redis/S3 storage and final progress update.")
 
         final_file_paths = {}
+        # Default final status
+        final_task_status = 'Completed' 
+
         if output_format == 'audio' and final_output_path and os.path.exists(final_output_path):
             final_file_paths['audio'] = final_output_path
         elif output_format == 'pdf' and final_output_path and os.path.exists(final_output_path):
@@ -477,24 +480,32 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         elif output_format == 'both':
             audio_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
             pdf_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
+            # Check if audio exists (it should if we got here)
             if os.path.exists(audio_path):
                 final_file_paths['audio'] = audio_path
-            # Check pdf_path existence, considering it might have failed
-            if 'Warning' not in status and os.path.exists(pdf_path):
+            else: # Should not happen if logic before is correct, but handle defensively
+                 logger.error(f"[{task_id}] 'both' format: Audio path {audio_path} not found unexpectedly.")
+                 # If audio failed, the whole task should probably error out
+                 raise FileNotFoundError(f"Audio file missing in 'both' format: {audio_path}")
+                 
+            # Check if PDF exists
+            if os.path.exists(pdf_path):
                  final_file_paths['pdf'] = pdf_path
-            elif 'Warning' in status:
-                 logger.warning(f"[{task_id}] PDF file likely failed, status: {status}. Skipping PDF for Redis/S3.")
-            else: # PDF path doesn't exist even though status wasn't Warning
-                 logger.warning(f"[{task_id}] PDF file path {pdf_path} not found despite no warning status. Skipping PDF for Redis/S3.")
+                 # Status remains 'Completed' if both exist
+            else:
+                 # If PDF doesn't exist, set warning status
+                 logger.warning(f"[{task_id}] 'both' format: PDF path {pdf_path} not found. Setting status to Warning.")
+                 final_task_status = 'Warning: Audio created, PDF failed'
+                 # We still proceed to save the audio file
 
-        # Ensure we have at least one file path if processing seemed successful
-        if not final_file_paths and 'Warning' not in status:
-             error_msg = f"No output file paths found for format '{output_format}' despite successful processing steps."
+        # Ensure we have at least one file path if status is not Warning
+        if not final_file_paths and not final_task_status.startswith('Warning'):
+             error_msg = f"No output file paths found for format '{output_format}' despite successful processing steps and no warning status."
              logger.error(f"[{task_id}] {error_msg}")
              update_progress(task_id, status=f'Error: {error_msg}', progress=100, error=True)
              raise Exception(error_msg)
 
-        # --- Save to Redis and/or S3 ---
+        # --- Save to Redis and/or S3 --- 
         redis_saved_types = []
         s3_remote_urls = {}
 
@@ -526,28 +537,26 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
                  logger.error(f"[{task_id}] Error saving {file_type} to Redis: {str(e)}", exc_info=True)
 
         # --- Final Progress Update --- 
-        # Remove local file paths, only include remote URLs if available
+        # Use the determined final_task_status
         final_progress_data = {
-            'status': status if 'Warning' in status else 'Completed',
+            'status': final_task_status, # Use the determined status
             'progress': 100,
             'redis_saved': redis_saved_types, # Indicate which types are in Redis
         }
-        # Add S3 URLs if they exist
         if s3_remote_urls:
-             final_progress_data['remote_urls'] = s3_remote_urls # Store as a dict {'audio': url, 'pdf': url}
-             # Keep legacy keys for now for compatibility in download route?
+             final_progress_data['remote_urls'] = s3_remote_urls
              if 'audio' in s3_remote_urls:
                  final_progress_data['remote_audio_url'] = s3_remote_urls['audio']
              if 'pdf' in s3_remote_urls:
                   final_progress_data['remote_pdf_url'] = s3_remote_urls['pdf']
-             # Add a generic one - maybe the first one found?
              final_progress_data['remote_file_url'] = next(iter(s3_remote_urls.values()), None)
         
-        # Check if *anything* was successfully stored
-        if not redis_saved_types and not s3_remote_urls and 'Warning' not in status:
+        # Check if *anything* was successfully stored, but only error out if status wasn't already Warning
+        if not redis_saved_types and not s3_remote_urls and not final_task_status.startswith('Warning'):
             error_msg = f"Failed to save output to Redis or S3 for task {task_id}."
             logger.error(f"[{task_id}] {error_msg}")
-            final_progress_data['status'] = 'Error: Storage Failed'
+            # Overwrite status to Error
+            final_progress_data['status'] = 'Error: Storage Failed' 
             final_progress_data['error'] = error_msg
             update_progress(task_id, **final_progress_data)
             raise Exception(error_msg)
@@ -571,8 +580,8 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
     except Exception as e:
         # Log the exception with traceback for better debugging
         logger.exception(f"[{task_id}] Error processing PDF {filename}: {e}") 
-        # Update progress with error status
-        update_progress(task_id, status=f'Error: {e}', progress=100, error=True)
+        # Update progress with error status - Use str(e) for the message
+        update_progress(task_id, status=f'Error: {str(e)}', progress=100, error=True)
         # Force garbage collection on error
         gc.collect()
         # Re-raise the exception so Celery knows the task failed
