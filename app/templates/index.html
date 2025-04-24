@@ -698,10 +698,10 @@
                     let downloadUrl;
                     let buttonText;
                     
-                    if (outputFormat === "both" && hasPDFFailure) {
+                    if (outputFormat === "both") {
                         downloadUrl = "/download/" + taskId + "?type=audio&final=true&t=" + timestamp;
                         buttonText = "Download Audio";
-                    } else if (outputFormat === "both") {
+                    
                         // For both formats, show two buttons
                         downloadContainer.innerHTML = `
                             <a href="/download/${taskId}?type=audio&final=false&t=${timestamp}" 
@@ -722,7 +722,7 @@
                     }
                     
                     // Add a single button for non-both formats
-                    if (outputFormat !== "both" || hasPDFFailure) {
+                    if (outputFormat !== "both") {
                         downloadContainer.innerHTML = `
                             <a href="${downloadUrl}" class="btn" target="_blank">${buttonText}</a>
                             <div style="margin-top:10px">
@@ -737,44 +737,17 @@
                     statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
                     
                     // For 'both' format with PDF failure, only download audio
-                    if (outputFormat === "both" && hasPDFFailure) {
-                        statusMessage.textContent = "PDF generation failed, downloading audio only...";
+                    if (outputFormat === "both") {
+                        // Update the message based on whether there's a PDF failure
+                        if (hasPDFFailure) {
+                            statusMessage.textContent = "PDF generation failed, downloading audio only...";
+                        } else {
+                            statusMessage.textContent = "Processing completed! Downloading files...";
+                        }
+                        
                         const audioTimestamp = new Date().getTime();
                         console.log("Redirecting to:", "/download/" + taskId + "?type=audio&final=true&t=" + audioTimestamp);
                         window.location.href = "/download/" + taskId + "?type=audio&final=true&t=" + audioTimestamp;
-                        return;
-                    }
-                    
-                    // Always handle audio first for 'both' format
-                    if (outputFormat === "both" && !hasPDFFailure) {
-                        // Log the success message first
-                        statusMessage.textContent = "Processing completed! Downloading files...";
-                        
-                        // Create hidden iframe for audio download first
-                        const audioIframe = document.createElement('iframe');
-                        audioIframe.style.display = 'none';
-                        audioIframe.onload = function() {
-                            console.log("Audio download iframe loaded, navigating to PDF download");
-                            
-                            // Then trigger PDF download after a longer delay to ensure both downloads work
-                            setTimeout(() => {
-                                // Add a timestamp to prevent caching
-                                const pdfTimestamp = new Date().getTime();
-                                console.log("Redirecting to PDF:", "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp);
-                                window.location.href = "/download/" + taskId + "?type=pdf&final=true&t=" + pdfTimestamp;
-                                // Change status message to indicate completion
-                                statusMessage.textContent = "Processing completed! If downloads don't start automatically, use buttons below.";
-                            }, 2000);
-                        };
-                        audioIframe.onerror = function() {
-                            console.error("Audio download iframe error");
-                            statusMessage.textContent = "Error downloading audio. Please use the buttons below.";
-                        };
-                        // Add a timestamp to prevent caching
-                        const iframeTimestamp = new Date().getTime();
-                        console.log("Loading audio iframe:", "/download/" + taskId + "?type=audio&final=false&t=" + iframeTimestamp);
-                        audioIframe.src = "/download/" + taskId + "?type=audio&final=false&t=" + iframeTimestamp;
-                        document.body.appendChild(audioIframe);
                     } else {
                         // For single file formats (audio, pdf, text)
                         // Add a timestamp to prevent caching
