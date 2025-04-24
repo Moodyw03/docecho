@@ -115,6 +115,46 @@ def create_app():
     def download_file(filename):
         return send_from_directory(app.config.get('OUTPUT_FOLDER', '.'), filename, as_attachment=True)
 
+    @app.route('/download/<uuid>')
+    def download_by_uuid(uuid):
+        """Download a file by UUID with type parameter"""
+        file_type = request.args.get('type', 'audio')
+        output_dir = app.config.get('OUTPUT_FOLDER', '.')
+        
+        # List files in the output directory
+        try:
+            files = os.listdir(output_dir)
+            app.logger.info(f"Files in output directory: {files}")
+            
+            # Look for files matching the UUID or containing it
+            matching_files = []
+            for file in files:
+                if uuid in file:
+                    matching_files.append(file)
+                    
+            app.logger.info(f"Matching files for UUID {uuid}: {matching_files}")
+            
+            # Find file matching the requested type
+            target_file = None
+            for file in matching_files:
+                if file_type == 'audio' and file.endswith('.mp3'):
+                    target_file = file
+                    break
+                elif file_type == 'pdf' and file.endswith('.pdf'):
+                    target_file = file
+                    break
+            
+            if target_file:
+                app.logger.info(f"Found matching file: {target_file}")
+                return send_from_directory(output_dir, target_file, as_attachment=True)
+            else:
+                app.logger.error(f"No matching {file_type} file found for UUID {uuid}")
+                return f"No matching {file_type} file found", 404
+                
+        except Exception as e:
+            app.logger.error(f"Error in download_by_uuid: {str(e)}")
+            return f"Error accessing files: {str(e)}", 500
+
     return app
 
 def configure_database(app):
