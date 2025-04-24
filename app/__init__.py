@@ -150,7 +150,7 @@ def create_app():
             else:
                 app.logger.warning(f"No matching {file_type} file in filesystem for UUID {uuid}, checking Redis")
                 # If no file found on filesystem, try getting from Redis
-                from app.utils.redis_helper import get_redis
+                from app.utils.redis import get_redis
                 from io import BytesIO
                 from flask import send_file
                 
