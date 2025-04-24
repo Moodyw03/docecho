@@ -125,13 +125,53 @@ def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, t
         raise Exception(f"Error converting text to audio: {e}")
 
 def concatenate_audio_files(audio_files, output_path):
+    logger.info(f"Starting concatenation. Input files: {audio_files}, Output path: {output_path}")
+    if not audio_files:
+        logger.warning("Concatenation called with no audio files.")
+        # Decide how to handle this: raise error or create empty file?
+        # For now, let's raise an error to make it clear.
+        raise ValueError("Cannot concatenate an empty list of audio files.")
+        
     try:
         combined = AudioSegment.empty()
-        for file in audio_files:
-            audio = AudioSegment.from_file(file)
-            combined += audio
+        for i, file in enumerate(audio_files):
+            try:
+                logger.debug(f"Concatenating chunk {i}: {file}")
+                # Check if file exists just before loading
+                if not os.path.exists(file):
+                    logger.error(f"Audio chunk file not found during concatenation: {file}")
+                    # Optionally, skip this chunk or raise an error
+                    # Raising error for now to highlight the issue
+                    raise FileNotFoundError(f"Audio chunk file not found: {file}")
+                    
+                audio = AudioSegment.from_file(file)
+                combined += audio
+                logger.debug(f"Successfully added chunk {i}: {file}. Current combined duration: {len(combined)}ms")
+            except Exception as chunk_e:
+                logger.error(f"Error processing audio chunk {file}: {str(chunk_e)}", exc_info=True)
+                # Decide whether to continue or fail the whole process
+                raise Exception(f"Failed to process chunk {file}: {str(chunk_e)}")
+                
+        # Ensure output directory exists before exporting
+        output_dir = os.path.dirname(output_path)
+        logger.debug(f"Ensuring output directory exists: {output_dir}")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        logger.info(f"Exporting combined audio ({len(combined)}ms) to: {output_path}")
         combined.export(output_path, format="mp3")
+        
+        # Verify export by checking file existence and size
+        if os.path.exists(output_path):
+             logger.info(f"Successfully exported combined audio. File size: {os.path.getsize(output_path)} bytes.")
+        else:
+             logger.error(f"Export failed! Combined audio file not found at: {output_path}")
+             raise IOError(f"Failed to export combined audio file to {output_path}")
+             
     except Exception as e:
+        # Log which specific file caused the error if possible
+        failed_file = file if 'file' in locals() else 'N/A' 
+        logger.error(f"Concatenation failed. Last attempted chunk file: {failed_file}. Output path: {output_path}. Error: {e}", exc_info=True)
+        # Re-raise the specific error or a generic one
         raise Exception(f"Error concatenating audio files: {e}")
 
 def create_translated_pdf(text, output_path, language_code='en'):
