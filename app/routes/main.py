@@ -219,12 +219,47 @@ def download(task_id):
                 return jsonify({"error": "PDF generation failed, but audio is available"}), 400
             return jsonify({"error": "PDF file not found"}), 404
             
-        file_path = data['audio_file'] if file_type == 'audio' else data['pdf_file']
-        current_app.logger.info(f"File path for {file_type}: {file_path}")
+        original_file_path = data['audio_file'] if file_type == 'audio' else data['pdf_file']
+        current_app.logger.info(f"Original file path for {file_type}: {original_file_path}")
         
-        # Verify file exists before sending
+        # Try the original path first
+        file_path = original_file_path
+        
+        # If the file doesn't exist at the original path, try finding it by filename in the output directory
         if not os.path.exists(file_path):
-            current_app.logger.error(f"File not found at path: {file_path}")
+            current_app.logger.warning(f"File not found at original path: {file_path}")
+            
+            # Extract just the filename
+            filename = os.path.basename(file_path)
+            output_dir = current_app.config['OUTPUT_FOLDER']
+            
+            # Alternative path - look in the output directory
+            alternative_path = os.path.join(output_dir, filename)
+            current_app.logger.info(f"Trying alternative path: {alternative_path}")
+            
+            if os.path.exists(alternative_path):
+                current_app.logger.info(f"File found at alternative path!")
+                file_path = alternative_path
+            else:
+                # Try one more approach - list all files in the output directory and look for similar names
+                try:
+                    output_files = os.listdir(output_dir)
+                    current_app.logger.info(f"Files in output directory: {output_files}")
+                    
+                    # Look for files with similar names (e.g., without specific path components)
+                    filename_base = os.path.splitext(filename)[0]
+                    for output_file in output_files:
+                        if filename_base in output_file:
+                            matching_path = os.path.join(output_dir, output_file)
+                            current_app.logger.info(f"Found matching file: {matching_path}")
+                            file_path = matching_path
+                            break
+                except Exception as e:
+                    current_app.logger.error(f"Error listing output directory: {e}")
+        
+        # Final check if file exists
+        if not os.path.exists(file_path):
+            current_app.logger.error(f"File not found at any tried path")
             # Log the output directory for debugging
             output_dir = current_app.config['OUTPUT_FOLDER']
             contents = os.listdir(output_dir) if os.path.exists(output_dir) else []
@@ -555,7 +590,44 @@ def direct_download(task_id, file_type):
         if file_key not in data:
             return f"No {file_type} file available for this task.", 404
             
-        file_path = data[file_key]
+        original_file_path = data[file_key]
+        current_app.logger.info(f"Original file path for {file_type}: {original_file_path}")
+        
+        # Try the original path first
+        file_path = original_file_path
+        
+        # If the file doesn't exist at the original path, try finding it by filename in the output directory
+        if not os.path.exists(file_path):
+            current_app.logger.warning(f"File not found at original path: {file_path}")
+            
+            # Extract just the filename
+            filename = os.path.basename(file_path)
+            output_dir = current_app.config['OUTPUT_FOLDER']
+            
+            # Alternative path - look in the output directory
+            alternative_path = os.path.join(output_dir, filename)
+            current_app.logger.info(f"Trying alternative path: {alternative_path}")
+            
+            if os.path.exists(alternative_path):
+                current_app.logger.info(f"File found at alternative path!")
+                file_path = alternative_path
+            else:
+                # Try one more approach - list all files in the output directory and look for similar names
+                try:
+                    output_files = os.listdir(output_dir)
+                    current_app.logger.info(f"Files in output directory: {output_files}")
+                    
+                    # Look for files with similar names (e.g., without specific path components)
+                    filename_base = os.path.splitext(filename)[0]
+                    for output_file in output_files:
+                        if filename_base in output_file:
+                            matching_path = os.path.join(output_dir, output_file)
+                            current_app.logger.info(f"Found matching file: {matching_path}")
+                            file_path = matching_path
+                            break
+                except Exception as e:
+                    current_app.logger.error(f"Error listing output directory: {e}")
+        
         if not os.path.exists(file_path):
             return f"File does not exist at path: {file_path}", 404
             

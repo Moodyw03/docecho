@@ -328,9 +328,37 @@ def update_progress(task_id, status=None, progress=None, error=None, **kwargs):
         if error is not None:
             data['error'] = error
             
-        # Update any additional fields
+        # Normalize file paths in kwargs to ensure consistent paths across environments
         for key, value in kwargs.items():
-            data[key] = value
+            # Handle audio_file and pdf_file paths specifically
+            if key in ['audio_file', 'pdf_file'] and value:
+                try:
+                    if has_app_context():
+                        # Check if we have an absolute path and convert to a consistent format
+                        if os.path.isabs(value):
+                            # Get the output folder from config
+                            output_folder = current_app.config.get('OUTPUT_FOLDER')
+                            
+                            # Extract just the filename
+                            filename = os.path.basename(value)
+                            
+                            # Store the output folder path + filename
+                            normalized_path = os.path.join(output_folder, filename)
+                            logger.info(f"Normalized path for {key}: {value} -> {normalized_path}")
+                            data[key] = normalized_path
+                        else:
+                            # Already a relative path, store as is
+                            data[key] = value
+                    else:
+                        # No app context, store path as is
+                        data[key] = value
+                except Exception as e:
+                    logger.error(f"Error normalizing path for {key}: {str(e)}")
+                    # Just store the original value if there's an error
+                    data[key] = value
+            else:
+                # For other values, just store them as is
+                data[key] = value
             
         # Add a timestamp for easier debugging
         data['updated_at'] = datetime.utcnow().isoformat()
