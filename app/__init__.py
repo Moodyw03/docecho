@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect
+from flask import Flask, request, redirect, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
@@ -26,6 +26,7 @@ def cleanup_expired_progress(app):
                 # Use the app's db instance
                 TaskProgress.cleanup_expired()
                 print("Cleaned up expired progress records")
+                db.session.remove()
         except Exception as e:
             # Log the error outside the app context
             print(f"Error cleaning up expired progress records: {str(e)}")
@@ -106,6 +107,10 @@ def create_app():
                 url = request.url.replace('http://', 'https://', 1)
                 return redirect(url, code=301)
     
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        db.session.remove()
+
     return app
 
 def configure_database(app):
