@@ -12,6 +12,9 @@ from werkzeug.utils import secure_filename
 import copy
 import json
 from datetime import datetime
+from app.utils.redis import get_redis
+import shutil
+import logging
 
 bp = Blueprint('main', __name__)
 
@@ -181,134 +184,135 @@ def progress(task_id):
             'task_id': task_id
         }), 202
 
-@bp.route('/download/<task_id>')
-@login_required
-def download(task_id):
+@bp.route('/download/<task_id>/<file_type>', methods=['GET'])
+def download_file(task_id, file_type):
+    """Download a processed file"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Download request for task {task_id}, file type: {file_type}")
+    
     try:
-        # Log basic request information for debugging
-        current_app.logger.info(f"Download request received for task {task_id}")
-        current_app.logger.info(f"Request headers: {dict(request.headers)}")
-        current_app.logger.info(f"Request args: {dict(request.args)}")
+        # Get progress data to check if task is completed
+        progress_data = get_progress(task_id)
+        if not progress_data:
+            logger.error(f"No progress data found for task {task_id}")
+            abort(404, "Task not found")
         
-        data = get_progress(task_id)
-        current_app.logger.info(f"Download request for task {task_id}. Progress data: {data}")
+        logger.debug(f"Progress data: {progress_data}")
         
-        if not data:
-            current_app.logger.error(f"Task {task_id} not found in progress data")
-            return jsonify({"error": "Task not found"}), 404
-            
-        # Check both capitalized and lowercased version of 'completed'
-        status = data.get('status', '')
-        if status.lower() != 'completed' and not status.startswith('Warning'):
-            current_app.logger.error(f"Task {task_id} not completed. Status: {status}")
-            return jsonify({"error": "Files not ready"}), 400
-            
-        file_type = request.args.get('type', 'audio')  # Default to audio if not specified
-        current_app.logger.info(f"Requested file type: {file_type}")
+        if progress_data.get('status') != 'completed':
+            logger.error(f"Task {task_id} is not completed yet: {progress_data.get('status')}")
+            abort(404, "Task processing not completed")
         
-        # Log all the keys in the data for better debugging
-        current_app.logger.info(f"Available keys in progress data: {list(data.keys())}")
+        # Create a consistent filename based on task_id and file_type
+        consistent_filename = f"{task_id}.{'mp3' if file_type == 'audio' else 'pdf'}"
+        output_folder = current_app.config['OUTPUT_FOLDER']
+        consistent_path = os.path.join(output_folder, consistent_filename)
         
-        if file_type == 'audio' and 'audio_file' not in data:
-            current_app.logger.error(f"Audio file not found in data for task {task_id}")
-            return jsonify({"error": "Audio file not found"}), 404
-        elif file_type == 'pdf' and 'pdf_file' not in data:
-            current_app.logger.error(f"PDF file not found in data for task {task_id}")
-            # If we're in 'Warning' state and PDF failed but audio succeeded, return helpful message
-            if status.startswith('Warning') and file_type == 'pdf':
-                return jsonify({"error": "PDF generation failed, but audio is available"}), 400
-            return jsonify({"error": "PDF file not found"}), 404
-            
-        original_file_path = data['audio_file'] if file_type == 'audio' else data['pdf_file']
-        current_app.logger.info(f"Original file path for {file_type}: {original_file_path}")
+        # Log what we're looking for
+        logger.info(f"Looking for file at consistent path: {consistent_path}")
         
-        # Try the original path first
-        file_path = original_file_path
-        
-        # If the file doesn't exist at the original path, try finding it by filename in the output directory
-        if not os.path.exists(file_path):
-            current_app.logger.warning(f"File not found at original path: {file_path}")
+        # Check if file exists at the consistent path first
+        if os.path.exists(consistent_path) and os.path.isfile(consistent_path):
+            logger.info(f"File found at consistent path: {consistent_path}")
+            file_path = consistent_path
+        else:
+            # If not found at consistent path, check original paths from progress data
+            logger.warning(f"File not found at consistent path: {consistent_path}")
             
-            # Extract just the filename
-            filename = os.path.basename(file_path)
-            output_dir = current_app.config['OUTPUT_FOLDER']
+            # Check what's in the output directory for debugging
+            try:
+                files_in_output = os.listdir(output_folder)
+                logger.debug(f"Files in output directory: {files_in_output}")
+            except Exception as e:
+                logger.error(f"Error listing output directory: {str(e)}")
             
-            # Alternative path - look in the output directory
-            alternative_path = os.path.join(output_dir, filename)
-            current_app.logger.info(f"Trying alternative path: {alternative_path}")
-            
-            if os.path.exists(alternative_path):
-                current_app.logger.info(f"File found at alternative path!")
-                file_path = alternative_path
+            if file_type == 'audio':
+                file_path = progress_data.get('audio_file') or progress_data.get('consistent_audio_file')
+                # Remote fallback
+                remote_url = progress_data.get('remote_audio_url')
             else:
-                # Try one more approach - list all files in the output directory and look for similar names
+                file_path = progress_data.get('pdf_file') or progress_data.get('consistent_pdf_file')
+                # Remote fallback
+                remote_url = progress_data.get('remote_pdf_url')
+            
+            logger.debug(f"Original file path from progress data: {file_path}")
+            
+            # Check if the file from progress data exists
+            if file_path and os.path.exists(file_path) and os.path.isfile(file_path):
+                logger.info(f"File found at original path: {file_path}")
+                
+                # Copy to consistent path for future requests
                 try:
-                    output_files = os.listdir(output_dir)
-                    current_app.logger.info(f"Files in output directory: {output_files}")
-                    
-                    # Look for files with similar names (e.g., without specific path components)
-                    filename_base = os.path.splitext(filename)[0]
-                    for output_file in output_files:
-                        if filename_base in output_file:
-                            matching_path = os.path.join(output_dir, output_file)
-                            current_app.logger.info(f"Found matching file: {matching_path}")
-                            file_path = matching_path
-                            break
+                    os.makedirs(os.path.dirname(consistent_path), exist_ok=True)
+                    shutil.copy2(file_path, consistent_path)
+                    logger.info(f"Copied file to consistent path: {consistent_path}")
+                    file_path = consistent_path
                 except Exception as e:
-                    current_app.logger.error(f"Error listing output directory: {e}")
+                    logger.error(f"Error copying to consistent path: {str(e)}")
+            else:
+                logger.warning(f"File not found at original path: {file_path}")
+                
+                # Last resort - try to get from Redis
+                redis_client = get_redis()
+                content_key = f"file_content:{task_id}:{file_type}"
+                file_content = redis_client.get(content_key)
+                
+                if file_content:
+                    logger.info(f"Retrieved file content from Redis for {task_id}:{file_type}")
+                    
+                    # Write the content to the consistent path
+                    try:
+                        os.makedirs(os.path.dirname(consistent_path), exist_ok=True)
+                        with open(consistent_path, 'wb') as f:
+                            f.write(file_content)
+                        logger.info(f"Wrote Redis content to file: {consistent_path}")
+                        file_path = consistent_path
+                    except Exception as e:
+                        logger.error(f"Error writing Redis content to file: {str(e)}")
+                        abort(500, f"Error retrieving file from Redis: {str(e)}")
+                else:
+                    logger.error(f"File content not found in Redis for {task_id}:{file_type}")
+                    
+                    # If we have a remote URL, redirect to it
+                    if remote_url:
+                        logger.info(f"Redirecting to remote URL: {remote_url}")
+                        return redirect(remote_url)
+                    
+                    abort(404, f"File not found for task {task_id}")
         
-        # Final check if file exists
-        if not os.path.exists(file_path):
-            current_app.logger.error(f"File not found at any tried path")
-            # Log the output directory for debugging
-            output_dir = current_app.config['OUTPUT_FOLDER']
-            contents = os.listdir(output_dir) if os.path.exists(output_dir) else []
-            current_app.logger.error(f"Contents of output directory: {contents}")
-            return jsonify({"error": f"{file_type.upper()} file not found"}), 404
-
-        # Get fresh file handle
-        if not os.path.isfile(file_path):
-            raise FileNotFoundError(f"{file_type.upper()} file not found")
-
-        # Log file details
-        file_size = os.path.getsize(file_path)
-        current_app.logger.info(f"Sending file: {file_path}, size: {file_size} bytes")
-        
-        # Create a unique filename for the download to prevent caching issues
+        # Generate a unique download filename to prevent caching issues
         original_filename = os.path.basename(file_path)
-        download_filename = f"{os.path.splitext(original_filename)[0]}_{task_id[:6]}{os.path.splitext(original_filename)[1]}"
-        current_app.logger.info(f"Using download filename: {download_filename}")
-
+        download_filename = f"{original_filename.split('.')[0]}_{uuid4().hex[:8]}.{original_filename.split('.')[-1]}"
+        
+        logger.info(f"Sending file: {file_path} as {download_filename}")
+        
+        # Set response headers to prevent caching
         response = send_file(
-            file_path,
-            mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf',
+            file_path, 
             as_attachment=True,
             download_name=download_filename,
-            conditional=True  # Add conditional sending
+            mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf'
         )
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         
-        # Add some cache control headers to prevent caching issues
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+        # After successful download, clean up progress data if it's been more than 1 hour
+        try:
+            if progress_data.get('timestamp'):
+                timestamp = datetime.fromisoformat(progress_data.get('timestamp'))
+                elapsed = (datetime.now() - timestamp).total_seconds()
+                if elapsed > 3600:  # 1 hour
+                    delete_progress(task_id)
+                    logger.info(f"Cleaned up progress data for task {task_id}")
+        except Exception as e:
+            logger.error(f"Error cleaning up progress data: {str(e)}")
         
-        # Log all response headers for debugging
-        current_app.logger.info(f"Response headers: {dict(response.headers)}")
-        
-        # Only delete progress if both files have been downloaded
-        if request.args.get('final') == 'true':
-            delete_progress(task_id)
-            current_app.logger.info(f"Cleaned up progress data for task {task_id}")
-        
-        current_app.logger.info(f"Successfully sent {file_type} file for task {task_id}")
         return response
         
     except Exception as e:
-        current_app.logger.error(f"Error downloading file for task {task_id}: {str(e)}")
-        # Add traceback for better debugging
-        import traceback
-        current_app.logger.error(traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
+        logger.exception(f"Error in download_file: {str(e)}")
+        abort(500, f"Error processing download request: {str(e)}")
 
 @bp.route('/pricing')
 def pricing():

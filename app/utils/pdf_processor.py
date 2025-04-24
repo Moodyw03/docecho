@@ -15,6 +15,15 @@ import concurrent.futures
 import requests
 import logging
 from flask import current_app # Import current_app to access config (alternative: pass config values)
+import re
+import tempfile
+import shutil
+from datetime import datetime
+import base64
+from io import BytesIO
+import json
+from app.utils.file_storage import copy_to_remote_storage
+from app.utils.redis import get_redis
 
 # Add logger instance
 logger = logging.getLogger(__name__)
@@ -187,6 +196,27 @@ def translate_with_timeout(translator, text, dest, timeout=10):
         return None, error
         
     return result, None
+
+def save_file_to_redis(file_path, task_id, file_type):
+    """Store file content in Redis as a backup mechanism"""
+    try:
+        if not os.path.exists(file_path):
+            current_app.logger.error(f"File not found at {file_path}, cannot save to Redis")
+            return False
+            
+        redis_client = get_redis()
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+            
+        # Store the file content in Redis with a key based on task_id and file_type
+        content_key = f"file_content:{task_id}:{file_type}"
+        redis_client.set(content_key, file_content, ex=86400)  # Expire after 24 hours
+        
+        current_app.logger.info(f"Successfully stored {file_type} content in Redis for task {task_id}")
+        return True
+    except Exception as e:
+        current_app.logger.error(f"Error saving file to Redis: {str(e)}")
+        return False
 
 @celery.task(bind=True)
 def process_pdf(self, filename, file_content, voice, speed, output_format, output_path, temp_path):
@@ -407,6 +437,16 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
             audio_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
             pdf_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
             update_progress(task_id, status='Completed', progress=100, audio_file=audio_path, pdf_file=pdf_path)
+        
+        # Upload result to remote storage (if configured)
+        try:
+            if final_output_path and os.path.exists(final_output_path):
+                remote_url = copy_to_remote_storage(final_output_path, f"{task_id}/{os.path.basename(final_output_path)}")
+                if remote_url:
+                    update_progress(task_id, status='Completed', progress=100, remote_file_url=remote_url)
+                    logger.info(f"Uploaded {os.path.basename(final_output_path)} to remote storage: {remote_url}")
+        except Exception as e:
+            logger.error(f"Error uploading to remote storage: {str(e)}")
         
         return final_output_path # Return the path to the final output
 
