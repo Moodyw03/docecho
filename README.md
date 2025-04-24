@@ -7,10 +7,25 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
 - **PDF to Audio Conversion**: Upload PDF files and convert them to MP3 audio files
 - **Translation Support**: Translate documents to different languages before conversion
 - **Multiple Output Formats**: Choose between audio-only or both audio and PDF outputs
+- **Customizable Speech Speed**: Adjust the speed of the generated audio
 - **Progress Tracking**: Real-time progress updates during conversion
 - **User Management**: User accounts with credit system for document processing
 - **Account Recovery**: Password reset functionality via email
 - **Responsive Design**: Modern, glass-like UI that works on desktop and mobile devices
+- **Async Processing**: Background task processing with Celery and Redis
+- **Scalable Architecture**: Separated web and worker processes for better performance
+
+## Technical Stack
+
+- **Backend**: Flask (Python 3.9+)
+- **Database**: PostgreSQL (production), SQLite (development)
+- **Task Queue**: Celery with Redis as broker
+- **PDF Processing**: PyPDF2, ReportLab
+- **Text-to-Speech**: gTTS (Google Text-to-Speech)
+- **Translation**: Google Translate API
+- **Payment Processing**: Stripe
+- **Email Service**: SendGrid
+- **Deployment**: Fly.io with Docker containerization
 
 ## Installation
 
@@ -19,6 +34,7 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
 - Python 3.9 or higher
 - FFmpeg (for audio processing)
 - PostgreSQL (for production) or SQLite (for development)
+- Redis (for task queue)
 
 ### Local Development Setup
 
@@ -49,8 +65,9 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
    FLASK_SECRET_KEY=your_secret_key
    JWT_SECRET_KEY=your_jwt_secret
    DATABASE_URL=sqlite:///instance/app.db  # For local development
+   REDIS_URL=redis://localhost:6379/0  # For Celery task queue
 
-   # Stripe Configuration
+   # Stripe Configuration (for payment processing)
    STRIPE_PUBLIC_KEY=your_stripe_public_key
    STRIPE_SECRET_KEY=your_stripe_secret_key
    STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
@@ -76,13 +93,30 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
    flask db upgrade
    ```
 
-6. Run the application:
+6. Start Redis server (required for Celery):
+
+   ```bash
+   # Install Redis if not already installed
+   # On macOS: brew install redis
+   # On Ubuntu: sudo apt install redis-server
+
+   # Start Redis server
+   redis-server
+   ```
+
+7. Start the Celery worker in a separate terminal window:
+
+   ```bash
+   celery -A celery_worker.celery worker --loglevel=info
+   ```
+
+8. Run the Flask application in another terminal window:
 
    ```bash
    python app.py
    ```
 
-7. Access the application at http://localhost:8000
+9. Access the application at http://localhost:8000
 
 ### Email Configuration
 
@@ -95,7 +129,7 @@ The application uses SendGrid for sending verification and password reset emails
 
 > **Note**: Without proper email configuration, user registration and password reset features will not work correctly.
 
-## File Paths Management
+## File Structure Management
 
 The application manages file paths in the following way:
 
@@ -113,6 +147,7 @@ The production environment uses a mounted volume at `/app/data` to ensure file p
 
 - All uploaded and generated files are stored in subdirectories under `/app/data`
 - The data volume is mounted to both web and worker processes
+- Redis is used for sharing progress data between processes
 - Files are cleaned up after successful download or after a configurable time period
 
 ## Deployment
@@ -125,6 +160,7 @@ The application is configured for deployment on [Fly.io](https://fly.io/) with t
 - **Worker Process**: Celery worker with 2 concurrent processes for background tasks
 - **Persistent Storage**: 1GB volume mounted at `/app/data`
 - **Database**: PostgreSQL on Fly.io
+- **Redis**: Redis instance on Fly.io for task queue and result storage
 
 For a complete step-by-step guide, please refer to the [DEPLOYMENT_FLY.md](DEPLOYMENT_FLY.md) file, which includes:
 
@@ -144,13 +180,17 @@ For production deployment on Fly.io, you'll need to set the following environmen
 - `FLASK_ENV=production`
 - `FLASK_SECRET_KEY=<your-secure-random-key>`
 - `DATABASE_URL=<your-database-url>` (Set automatically when using Fly Postgres)
+- `REDIS_URL=<your-redis-url>` (Set automatically when using Fly Redis)
 - `MAIL_SERVER=smtp.sendgrid.net`
 - `MAIL_PORT=587`
 - `MAIL_USERNAME=apikey`
 - `MAIL_PASSWORD=<your-sendgrid-api-key>`
 - `MAIL_DEFAULT_SENDER=<your-verified-email>`
 - `MAIL_USE_TLS=true`
-- `GOOGLE_APPLICATION_CREDENTIALS=credentials.json`
+- `SENDGRID_API_KEY=<your-sendgrid-api-key>`
+- `STRIPE_PUBLIC_KEY=<your-stripe-public-key>`
+- `STRIPE_SECRET_KEY=<your-stripe-secret-key>`
+- `STRIPE_WEBHOOK_SECRET=<your-stripe-webhook-secret>`
 - `FRONTEND_URL=https://<your-app-name>.fly.dev`
 
 These can be set using the `fly secrets set` command as detailed in the deployment guide.
@@ -188,7 +228,7 @@ If you forget your password:
 
 ### Credit System
 
-- Each user starts with a limited number of credits
+- Each user starts with 5 free credits
 - Converting a PDF to audio costs 1 credit
 - Adding audio output costs an additional 1 credit
 - Users can purchase more credits through the pricing page
@@ -205,8 +245,6 @@ To view all registered users:
 python list_users.py
 ```
 
-Or access the admin interface at `/admin/users` (admin access required).
-
 #### Adding Credits
 
 To add credits to a user:
@@ -221,6 +259,12 @@ Example:
 python add_credits.py 1 10
 ```
 
+For adding credits to users by email:
+
+```bash
+python add_credits_by_email.py <email> <credits_to_add>
+```
+
 #### Deleting Users
 
 To delete a specific user:
@@ -229,13 +273,11 @@ To delete a specific user:
 python delete_user.py <user_id>
 ```
 
-To delete all users:
+To delete all users (use with caution):
 
 ```bash
 python delete_users.py
 ```
-
-Or use the admin interface at `/clear-users` (admin access required).
 
 ## Troubleshooting
 
@@ -245,25 +287,30 @@ If you encounter database-related errors:
 
 1. Check that your database connection is properly configured in the `.env` file
 2. Ensure migrations are up to date with `flask db upgrade`
-3. The application includes a file-based fallback for progress tracking if database operations fail
+3. For SQLite issues, try resetting the database with `./reset_db.sh`
+4. The application includes a file-based fallback for progress tracking if database operations fail
 
-### Deployment Issues
+### Task Processing Issues
 
-If you encounter issues with your Fly.io deployment:
+If document processing is not working:
 
-1. Check the logs with `fly logs`
-2. Verify that both web and worker processes are running with `fly status`
-3. Ensure the storage volume is properly mounted with `fly ssh console` and check the `/app/data` directory
-4. For host issues, check `fly incidents hosts list` to see if there are any active incidents
+1. Verify that Redis is running and accessible
+2. Check that the Celery worker is running (`celery -A celery_worker.celery worker --loglevel=info`)
+3. Look for errors in the Celery worker logs
+4. Ensure the required directories exist and have proper permissions
 
-### Processing Errors
+### Email Issues
 
-If PDF processing fails:
+If email functionality is not working:
 
-1. Verify that FFmpeg is properly installed and accessible
-2. Check that the PDF is not password-protected or corrupted
-3. Review the application logs for specific error messages
-4. Ensure the worker process is running properly
+1. Verify your SendGrid API key is valid and properly set
+2. Check that your sender email is verified in SendGrid
+3. Test the email configuration with `/auth/test-sendgrid`
+4. Check application logs for specific error messages
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
