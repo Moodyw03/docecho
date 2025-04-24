@@ -139,6 +139,7 @@ def progress(task_id):
             # First try to get progress from the shared database
             from app.utils.progress import get_progress
             data = get_progress(task_id)
+            current_app.logger.info(f"[{task_id}] Data returned by get_progress: {data}")  # Log the data here
             
             if data:
                 # Cache response information for better performance
