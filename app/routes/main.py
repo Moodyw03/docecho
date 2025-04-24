@@ -11,7 +11,7 @@ import stripe
 from werkzeug.utils import secure_filename
 import copy
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from app.utils.redis import get_redis
 import shutil
 import logging
@@ -188,107 +188,126 @@ def progress(task_id):
 def download_file(task_id, file_type):
     """Download a processed file"""
     logger = logging.getLogger(__name__)
-    logger.info(f"Download request for task {task_id}, file type: {file_type}")
-    
+    logger.info(f"Download request received for task {task_id}, file type: {file_type}")
+    logger.info(f"Request args: {request.args}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+
     try:
         # Get progress data to check if task is completed
         progress_data = get_progress(task_id)
         if not progress_data:
-            logger.error(f"No progress data found for task {task_id}")
-            abort(404, "Task not found")
-        
-        logger.debug(f"Progress data: {progress_data}")
-        
-        if progress_data.get('status') != 'completed':
-            logger.error(f"Task {task_id} is not completed yet: {progress_data.get('status')}")
-            abort(404, "Task processing not completed")
-        
-        # Create a consistent filename based on task_id and file_type
-        consistent_filename = f"{task_id}.{'mp3' if file_type == 'audio' else 'pdf'}"
+            logger.error(f"[{task_id}] Progress data not found.")
+            abort(404, "Task not found or has expired.")
+
+        logger.info(f"[{task_id}] Download request. Progress data: {progress_data}")
+        logger.info(f"[{task_id}] Available keys in progress data: {list(progress_data.keys())}")
+        logger.info(f"[{task_id}] Requested file type: {file_type}")
+
+        status = progress_data.get('status', '')
+        # Allow download even if PDF failed in 'both' mode
+        if status.lower() != 'completed' and not status.startswith('Warning'):
+            logger.error(f"[{task_id}] Task status is '{status}', not 'completed'.")
+            abort(404, "Task processing not completed or failed.")
+
         output_folder = current_app.config['OUTPUT_FOLDER']
-        consistent_path = os.path.join(output_folder, consistent_filename)
-        
-        # Log what we're looking for
-        logger.info(f"Looking for file at consistent path: {consistent_path}")
-        
-        # Check if file exists at the consistent path first
-        if os.path.exists(consistent_path) and os.path.isfile(consistent_path):
-            logger.info(f"File found at consistent path: {consistent_path}")
-            file_path = consistent_path
+        file_path = None
+        remote_url = None
+        original_file_path_from_progress = None
+
+        # --- Determine the expected file path and remote URL from progress data ---
+        if file_type == 'audio':
+            original_file_path_from_progress = progress_data.get('audio_file')
+            remote_url = progress_data.get('remote_audio_url') or progress_data.get('remote_file_url') # Include generic remote_file_url
+        elif file_type == 'pdf':
+            original_file_path_from_progress = progress_data.get('pdf_file')
+            remote_url = progress_data.get('remote_pdf_url') or progress_data.get('remote_file_url')
         else:
-            # If not found at consistent path, check original paths from progress data
-            logger.warning(f"File not found at consistent path: {consistent_path}")
-            
-            # Check what's in the output directory for debugging
-            try:
-                files_in_output = os.listdir(output_folder)
-                logger.debug(f"Files in output directory: {files_in_output}")
-            except Exception as e:
-                logger.error(f"Error listing output directory: {str(e)}")
-            
-            if file_type == 'audio':
-                file_path = progress_data.get('audio_file') or progress_data.get('consistent_audio_file')
-                # Remote fallback
-                remote_url = progress_data.get('remote_audio_url')
+             logger.error(f"[{task_id}] Invalid file_type requested: {file_type}")
+             abort(400, "Invalid file type requested.")
+
+        logger.info(f"[{task_id}] Original file path from progress: {original_file_path_from_progress}")
+        logger.info(f"[{task_id}] Remote URL from progress: {remote_url}")
+
+        # --- Check for the file locally ---
+        if original_file_path_from_progress:
+            # 1. Check the exact path stored in progress data
+            logger.info(f"[{task_id}] Checking original path: {original_file_path_from_progress}")
+            if os.path.exists(original_file_path_from_progress) and os.path.isfile(original_file_path_from_progress):
+                logger.info(f"[{task_id}] File found at original path: {original_file_path_from_progress}")
+                file_path = original_file_path_from_progress
             else:
-                file_path = progress_data.get('pdf_file') or progress_data.get('consistent_pdf_file')
-                # Remote fallback
-                remote_url = progress_data.get('remote_pdf_url')
-            
-            logger.debug(f"Original file path from progress data: {file_path}")
-            
-            # Check if the file from progress data exists
-            if file_path and os.path.exists(file_path) and os.path.isfile(file_path):
-                logger.info(f"File found at original path: {file_path}")
-                
-                # Copy to consistent path for future requests
-                try:
-                    os.makedirs(os.path.dirname(consistent_path), exist_ok=True)
-                    shutil.copy2(file_path, consistent_path)
-                    logger.info(f"Copied file to consistent path: {consistent_path}")
-                    file_path = consistent_path
-                except Exception as e:
-                    logger.error(f"Error copying to consistent path: {str(e)}")
-            else:
-                logger.warning(f"File not found at original path: {file_path}")
-                
-                # Last resort - try to get from Redis
-                redis_client = get_redis()
-                content_key = f"file_content:{task_id}:{file_type}"
-                file_content = redis_client.get(content_key)
-                
-                if file_content:
-                    logger.info(f"Retrieved file content from Redis for {task_id}:{file_type}")
-                    
-                    # Write the content to the consistent path
-                    try:
-                        os.makedirs(os.path.dirname(consistent_path), exist_ok=True)
-                        with open(consistent_path, 'wb') as f:
-                            f.write(file_content)
-                        logger.info(f"Wrote Redis content to file: {consistent_path}")
-                        file_path = consistent_path
-                    except Exception as e:
-                        logger.error(f"Error writing Redis content to file: {str(e)}")
-                        abort(500, f"Error retrieving file from Redis: {str(e)}")
+                logger.warning(f"[{task_id}] File NOT found at original path: {original_file_path_from_progress}")
+
+                # 2. If original path fails, construct path using OUTPUT_FOLDER and filename
+                filename = os.path.basename(original_file_path_from_progress)
+                alternative_path = os.path.join(output_folder, filename)
+                logger.info(f"[{task_id}] Checking alternative path: {alternative_path}")
+                if os.path.exists(alternative_path) and os.path.isfile(alternative_path):
+                    logger.info(f"[{task_id}] File found at alternative path: {alternative_path}")
+                    file_path = alternative_path
                 else:
-                    logger.error(f"File content not found in Redis for {task_id}:{file_type}")
-                    
-                    # If we have a remote URL, redirect to it
-                    if remote_url:
-                        logger.info(f"Redirecting to remote URL: {remote_url}")
-                        return redirect(remote_url)
-                    
-                    abort(404, f"File not found for task {task_id}")
-        
-        # Generate a unique download filename to prevent caching issues
-        original_filename = os.path.basename(file_path)
-        download_filename = f"{original_filename.split('.')[0]}_{uuid4().hex[:8]}.{original_filename.split('.')[-1]}"
-        
-        logger.info(f"Sending file: {file_path} as {download_filename}")
-        
+                    logger.warning(f"[{task_id}] File NOT found at alternative path: {alternative_path}")
+                    # 3. List directory contents for debugging if file still not found
+                    try:
+                        files_in_output = os.listdir(output_folder)
+                        logger.info(f"[{task_id}] Files currently in output directory ({output_folder}): {files_in_output}")
+                    except Exception as e:
+                        logger.error(f"[{task_id}] Error listing output directory ({output_folder}): {str(e)}")
+
+        # --- Fallback Mechanisms (if file not found locally) ---
+        if not file_path:
+            logger.warning(f"[{task_id}] File not found locally. Attempting fallbacks.")
+
+            # 4. Try Redis fallback
+            logger.info(f"[{task_id}] Attempting Redis fallback.")
+            redis_client = get_redis()
+            content_key = f"file_content:{task_id}:{file_type}"
+            file_content = None
+            try:
+                 file_content = redis_client.get(content_key)
+            except Exception as e:
+                 logger.error(f"[{task_id}] Error accessing Redis key {content_key}: {str(e)}")
+
+            if file_content:
+                logger.info(f"[{task_id}] Retrieved file content from Redis (key: {content_key}).")
+                # Try to write Redis content back to a consistent path for future requests
+                # Use original filename if possible, otherwise generate one
+                filename_for_redis_write = os.path.basename(original_file_path_from_progress) if original_file_path_from_progress else f"{task_id}_{file_type}.{'mp3' if file_type == 'audio' else 'pdf'}"
+                redis_write_path = os.path.join(output_folder, filename_for_redis_write)
+                try:
+                    os.makedirs(os.path.dirname(redis_write_path), exist_ok=True)
+                    with open(redis_write_path, 'wb') as f:
+                        f.write(file_content)
+                    logger.info(f"[{task_id}] Wrote Redis content to file: {redis_write_path}")
+                    file_path = redis_write_path # Use the newly written file
+                except Exception as e:
+                    logger.error(f"[{task_id}] Error writing Redis content to file {redis_write_path}: {str(e)}")
+                    # If write fails, we can't serve it directly, proceed to remote URL check
+            else:
+                logger.warning(f"[{task_id}] File content not found in Redis (key: {content_key}).")
+
+            # 5. Try Remote URL fallback (only if Redis didn't yield a file_path)
+            if not file_path and remote_url:
+                logger.info(f"[{task_id}] No local file or Redis content. Redirecting to remote URL: {remote_url}")
+                return redirect(remote_url)
+
+            # 6. If all fallbacks fail, abort
+            if not file_path:
+                 logger.error(f"[{task_id}] File not found after checking all local paths, Redis, and remote URL.")
+                 abort(404, f"File not found for task {task_id}.")
+
+        # --- Send the file ---
+        logger.info(f"[{task_id}] Proceeding to send file: {file_path}")
+        # Generate a unique download filename to prevent caching issues (optional, but good practice)
+        # original_filename = os.path.basename(file_path)
+        # download_filename = f"{original_filename.split('.')[0]}_{uuid.uuid4().hex[:8]}.{original_filename.split('.')[-1]}"
+        download_filename = os.path.basename(file_path) # Keep original name for simplicity now
+
+        logger.info(f"[{task_id}] Sending file: {file_path} as {download_filename}")
+
         # Set response headers to prevent caching
         response = send_file(
-            file_path, 
+            file_path,
             as_attachment=True,
             download_name=download_filename,
             mimetype='audio/mpeg' if file_type == 'audio' else 'application/pdf'
@@ -296,22 +315,34 @@ def download_file(task_id, file_type):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
-        
-        # After successful download, clean up progress data if it's been more than 1 hour
+
+        # After successful download, clean up progress data if it's been more than 1 hour (optional)
         try:
-            if progress_data.get('timestamp'):
-                timestamp = datetime.fromisoformat(progress_data.get('timestamp'))
-                elapsed = (datetime.now() - timestamp).total_seconds()
+            # Using updated_at field from progress data
+            updated_at_str = progress_data.get('updated_at')
+            if updated_at_str:
+                 # Ensure timestamp is timezone-aware if needed, assuming UTC from isoformat
+                updated_at = datetime.fromisoformat(updated_at_str)
+                # Make timezone-aware for comparison if needed, assuming UTC
+                if updated_at.tzinfo is None:
+                     updated_at = updated_at.replace(tzinfo=timezone.utc)
+                now_aware = datetime.now(timezone.utc)
+
+                elapsed = (now_aware - updated_at).total_seconds()
                 if elapsed > 3600:  # 1 hour
                     delete_progress(task_id)
-                    logger.info(f"Cleaned up progress data for task {task_id}")
+                    logger.info(f"[{task_id}] Cleaned up expired progress data.")
         except Exception as e:
-            logger.error(f"Error cleaning up progress data: {str(e)}")
-        
+            logger.error(f"[{task_id}] Error cleaning up progress data: {str(e)}")
+
         return response
-        
+
     except Exception as e:
-        logger.exception(f"Error in download_file: {str(e)}")
+        task_id_str = f"[{task_id}] " if 'task_id' in locals() else ""
+        logger.exception(f"{task_id_str}Error processing download request: {str(e)}")
+        # Use traceback for more detail in logs
+        import traceback
+        logger.error(traceback.format_exc())
         abort(500, f"Error processing download request: {str(e)}")
 
 @bp.route('/pricing')

@@ -424,30 +424,101 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         
         logger.info(f"[{task_id}] PDF processing finished successfully. Output: {final_output_path}")
         
-        # Update the progress data with the correct file path based on output format
+        # Upload result to remote storage (if configured)
+        remote_url_final = None # Initialize remote URL variable
+        try:
+            # Check if final_output_path exists before attempting upload or Redis save
+            if final_output_path and os.path.exists(final_output_path):
+                logger.info(f"[{task_id}] Attempting to upload to remote storage: {final_output_path}")
+                remote_url_final = copy_to_remote_storage(final_output_path, f"{task_id}/{os.path.basename(final_output_path)}")
+                if remote_url_final:
+                    logger.info(f"[{task_id}] Successfully uploaded {os.path.basename(final_output_path)} to remote storage: {remote_url_final}")
+                    # Update progress immediately with remote URL if available
+                    progress_update_data = {
+                        'remote_file_url': remote_url_final
+                    }
+                    if output_format == 'audio':
+                        progress_update_data['remote_audio_url'] = remote_url_final
+                    elif output_format == 'pdf':
+                         progress_update_data['remote_pdf_url'] = remote_url_final
+                    elif output_format == 'both':
+                        # Need to handle 'both' case - which URL is this? Assuming it's the *last* created file (PDF if successful)
+                        # Or maybe upload both and store separate URLs?
+                        # For now, store it generically and potentially specifically for PDF
+                        progress_update_data['remote_pdf_url'] = remote_url_final
+                        # If audio was also created, maybe try uploading that too?
+                        # This logic might need refinement based on desired behavior for 'both' + S3
+                    
+                    # Merge this update with the final status update
+                    update_progress(task_id, **progress_update_data)
+                else:
+                     logger.warning(f"[{task_id}] copy_to_remote_storage returned None. Upload skipped or failed.")
+                     
+                # Save to Redis as a fallback if remote storage didn't work or isn't configured
+                # Determine file_type for Redis key
+                redis_file_type = 'unknown'
+                if output_format == 'audio': redis_file_type = 'audio'
+                elif output_format == 'pdf': redis_file_type = 'pdf'
+                elif output_format == 'text': redis_file_type = 'text' 
+                # 'both' case: What should we save? Maybe save both audio and pdf?
+                # For now, let's save the primary output (audio first, then potentially overwritten by pdf)
+                elif output_format == 'both':
+                    # Save audio first
+                    audio_path_for_redis = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
+                    if os.path.exists(audio_path_for_redis):
+                        logger.info(f"[{task_id}] Saving audio file content to Redis as fallback: {audio_path_for_redis}")
+                        save_file_to_redis(audio_path_for_redis, task_id, 'audio')
+                    # Then save PDF if it exists
+                    pdf_path_for_redis = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
+                    if os.path.exists(pdf_path_for_redis):
+                        logger.info(f"[{task_id}] Saving PDF file content to Redis as fallback: {pdf_path_for_redis}")
+                        save_file_to_redis(pdf_path_for_redis, task_id, 'pdf')
+                        redis_file_type = 'pdf' # Indicate PDF was the last saved for single save below
+                    else:
+                         redis_file_type = 'audio' # If PDF failed, audio was the one
+                
+                # Save single file formats or the last successful one from 'both'
+                if output_format != 'both':
+                     logger.info(f"[{task_id}] Saving {redis_file_type} file content to Redis as fallback: {final_output_path}")
+                     save_file_to_redis(final_output_path, task_id, redis_file_type)
+            else:
+                 logger.warning(f"[{task_id}] Final output file {final_output_path} not found. Skipping S3 upload and Redis save.")
+                 
+        except Exception as e:
+            logger.error(f"[{task_id}] Error during remote storage upload or Redis save: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc()) # Log full traceback for this error
+        
+        # Final progress update after all operations
+        final_progress_data = {'status': 'Completed', 'progress': 100}
         if output_format == 'audio':
-            update_progress(task_id, status='Completed', progress=100, audio_file=final_output_path)
+            final_progress_data['audio_file'] = final_output_path
         elif output_format == 'pdf':
-            update_progress(task_id, status='Completed', progress=100, pdf_file=final_output_path)
+            final_progress_data['pdf_file'] = final_output_path
         elif output_format == 'text':
-            update_progress(task_id, status='Completed', progress=100, text_file=final_output_path)
+             final_progress_data['text_file'] = final_output_path
         elif output_format == 'both':
-            # If both, this needs to be handled separately
-            # The audio file would have been processed first, update with both paths
             audio_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
             pdf_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
-            update_progress(task_id, status='Completed', progress=100, audio_file=audio_path, pdf_file=pdf_path)
-        
-        # Upload result to remote storage (if configured)
-        try:
-            if final_output_path and os.path.exists(final_output_path):
-                remote_url = copy_to_remote_storage(final_output_path, f"{task_id}/{os.path.basename(final_output_path)}")
-                if remote_url:
-                    update_progress(task_id, status='Completed', progress=100, remote_file_url=remote_url)
-                    logger.info(f"Uploaded {os.path.basename(final_output_path)} to remote storage: {remote_url}")
-        except Exception as e:
-            logger.error(f"Error uploading to remote storage: {str(e)}")
-        
+            if os.path.exists(audio_path):
+                 final_progress_data['audio_file'] = audio_path
+            if os.path.exists(pdf_path):
+                 final_progress_data['pdf_file'] = pdf_path
+             # If PDF creation failed earlier, status would contain 'Warning'
+            if 'Warning' in status:
+                 final_progress_data['status'] = status # Keep the warning status
+        # Add remote URL if it was successfully obtained
+        if remote_url_final:
+             final_progress_data['remote_file_url'] = remote_url_final
+             # Add specific type URLs too
+             if output_format == 'audio' or (output_format == 'both' and 'audio_file' in final_progress_data):
+                 final_progress_data['remote_audio_url'] = remote_url_final
+             if output_format == 'pdf' or (output_format == 'both' and 'pdf_file' in final_progress_data):
+                 final_progress_data['remote_pdf_url'] = remote_url_final
+                 
+        update_progress(task_id, **final_progress_data)
+        logger.info(f"[{task_id}] Final progress update: {final_progress_data}")
+
         return final_output_path # Return the path to the final output
 
     except Exception as e:
