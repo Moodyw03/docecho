@@ -415,7 +415,16 @@
           <option value="zh-CN">Chinese (Mandarin)</option>
           <option value="ja">Japanese</option>
           <option value="ru">Russian</option>
+          <option value="ar">Arabic</option>
+          <option value="hi">Hindi</option>
+          <option value="ko">Korean</option>
+          <option value="tr">Turkish</option>
+          <option value="nl">Dutch</option>
+          <option value="pl">Polish</option>
         </select>
+        <div id="font-warning" style="display: none; color: #e67e22; font-size: 0.8rem; margin-top: 0.3rem; padding: 0.3rem; background: rgba(230, 126, 34, 0.1); border-radius: 5px;">
+          Note: This language may have font rendering issues in PDF output. Audio should work correctly.
+        </div>
       </div>
 
       <div class="options">
@@ -470,6 +479,48 @@
       if (outputFormatSelect) {
         outputFormatSelect.addEventListener("change", updateButtonText);
       }
+      
+      // Font warning handler
+      const voiceSelect = document.getElementById("voice");
+      const fontWarning = document.getElementById("font-warning");
+      
+      // Languages with potential font rendering issues
+      const problematicFontLanguages = ["zh-CN", "ja", "ar", "hi", "ko"];
+      
+      // Show or hide font warning based on selected language
+      function updateFontWarning() {
+        if (voiceSelect && fontWarning) {
+          const selectedLanguage = voiceSelect.value;
+          const outputFormat = outputFormatSelect ? outputFormatSelect.value : "audio";
+          
+          // Only show warning for problematic languages if PDF output is selected
+          if (problematicFontLanguages.includes(selectedLanguage) && 
+              (outputFormat === "pdf" || outputFormat === "both")) {
+            fontWarning.style.display = "block";
+          } else {
+            fontWarning.style.display = "none";
+          }
+        }
+      }
+      
+      // Add font warning check to existing voice selection change event
+      if (voiceSelect) {
+        voiceSelect.addEventListener("change", function() {
+          updateOutputOptions();
+          updateFontWarning();
+        });
+      }
+      
+      // Also check on output format change
+      if (outputFormatSelect) {
+        outputFormatSelect.addEventListener("change", function() {
+          updateButtonText();
+          updateFontWarning();
+        });
+      }
+      
+      // Initialize font warning on page load
+      updateFontWarning();
       
       // Form submission handler - most critical part
       const uploadForm = document.getElementById("uploadForm");

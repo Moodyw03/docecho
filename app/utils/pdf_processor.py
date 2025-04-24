@@ -39,7 +39,13 @@ language_map = {
     "it": {"lang": "it", "tld": "it"},
     "zh-CN": {"lang": "zh-CN", "tld": "com"},
     "ja": {"lang": "ja", "tld": "co.jp"},
-    "ru": {"lang": "ru", "tld": "ru"}
+    "ru": {"lang": "ru", "tld": "ru"},
+    "ar": {"lang": "ar", "tld": "com.sa"},    # Arabic
+    "hi": {"lang": "hi", "tld": "co.in"},     # Hindi
+    "ko": {"lang": "ko", "tld": "co.kr"},     # Korean
+    "tr": {"lang": "tr", "tld": "com.tr"},    # Turkish
+    "nl": {"lang": "nl", "tld": "nl"},        # Dutch
+    "pl": {"lang": "pl", "tld": "pl"}         # Polish
 }
 
 # Smaller chunk size for better processing
@@ -190,40 +196,104 @@ def concatenate_audio_files(audio_files, output_path):
 
 def create_translated_pdf(text, output_path, language_code='en'):
     try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import os
+        from flask import current_app
+        
+        # Create Canvas with letter size
         c = canvas.Canvas(output_path, pagesize=letter)
         width, height = letter
         y = height - 50
         
-        c.setFont("Helvetica", 11)
+        # Determine appropriate font based on language
+        font_name = "Helvetica"
+        font_size = 11
+        
+        # Languages that need special font handling
+        complex_script_languages = {
+            "zh-CN": {"needs_special_font": True, "font_family": "SimSun", "fallback": "Helvetica"},
+            "ja": {"needs_special_font": True, "font_family": "HeiseiMin-W3", "fallback": "Helvetica"},
+            "ko": {"needs_special_font": True, "font_family": "Malgun Gothic", "fallback": "Helvetica"},
+            "ar": {"needs_special_font": True, "font_family": "Arial Unicode MS", "fallback": "Helvetica", "rtl": True},
+            "hi": {"needs_special_font": True, "font_family": "Arial Unicode MS", "fallback": "Helvetica"}
+        }
+        
+        # Check if language needs special handling
+        if language_code in complex_script_languages:
+            logger.info(f"Using special font handling for language: {language_code}")
+            font_config = complex_script_languages[language_code]
+            
+            # For languages with complex scripts, we'll add a note about possible font rendering issues
+            note = "Note: Some characters may not render correctly due to font limitations."
+            c.setFont("Helvetica", 9)
+            c.drawString(50, height - 30, note)
+            
+            # Use fallback font since we can't guarantee the availability of specialized fonts
+            font_name = font_config["fallback"]
+            
+            # For RTL languages like Arabic, add a note
+            if font_config.get("rtl", False):
+                rtl_note = "Note: For Arabic text, characters may appear in reverse order."
+                c.setFont("Helvetica", 9)
+                c.drawString(50, height - 45, rtl_note)
+                y = height - 65  # Start content lower due to multiple notes
+            else:
+                y = height - 50  # Reset to default starting position
+        
+        # Set the font
+        c.setFont(font_name, font_size)
         
         lines = text.split('\n')
         for line in lines:
+            # Skip empty lines
+            if not line or line.isspace():
+                y -= 10  # Less space for empty line
+                continue
+                
             words = line.split()
             current_line = []
             
             for word in words:
                 current_line.append(word)
-                line_width = c.stringWidth(' '.join(current_line), "Helvetica", 11)
+                try:
+                    line_width = c.stringWidth(' '.join(current_line), font_name, font_size)
+                except:
+                    # If we can't determine width, make a conservative estimate
+                    line_width = len(' '.join(current_line)) * (font_size * 0.6)
                 
                 if line_width > width - 100:
                     current_line.pop()
                     if current_line:
-                        c.drawString(50, y, ' '.join(current_line))
+                        try:
+                            c.drawString(50, y, ' '.join(current_line))
+                        except Exception as e:
+                            # If drawing fails, try to represent characters as best as possible
+                            logger.warning(f"Error drawing text: {e}, attempting fallback")
+                            safe_text = ''.join([c if ord(c) < 128 else '?' for c in ' '.join(current_line)])
+                            c.drawString(50, y, safe_text)
                         y -= 20
                     current_line = [word]
                 
                 if y < 50:
                     c.showPage()
-                    c.setFont("Helvetica", 11)
+                    c.setFont(font_name, font_size)
                     y = height - 50
             
             if current_line:
-                c.drawString(50, y, ' '.join(current_line))
+                try:
+                    c.drawString(50, y, ' '.join(current_line))
+                except Exception as e:
+                    # Fallback for problematic characters
+                    logger.warning(f"Error drawing text: {e}, attempting fallback")
+                    safe_text = ''.join([c if ord(c) < 128 else '?' for c in ' '.join(current_line)])
+                    c.drawString(50, y, safe_text)
                 y -= 20
         
         c.save()
         return output_path
     except Exception as e:
+        logger.error(f"Error creating PDF: {str(e)}")
         raise Exception(f"Error creating PDF: {str(e)}")
 
 # Helper function for translation with timeout
