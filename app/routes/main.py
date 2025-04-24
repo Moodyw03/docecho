@@ -197,8 +197,10 @@ def download(task_id):
             current_app.logger.error(f"Task {task_id} not found in progress data")
             return jsonify({"error": "Task not found"}), 404
             
-        if data.get('status') != 'completed' and not data.get('status', '').startswith('Warning'):
-            current_app.logger.error(f"Task {task_id} not completed. Status: {data.get('status')}")
+        # Check both capitalized and lowercased version of 'completed'
+        status = data.get('status', '')
+        if status.lower() != 'completed' and not status.startswith('Warning'):
+            current_app.logger.error(f"Task {task_id} not completed. Status: {status}")
             return jsonify({"error": "Files not ready"}), 400
             
         file_type = request.args.get('type', 'audio')  # Default to audio if not specified
@@ -213,7 +215,7 @@ def download(task_id):
         elif file_type == 'pdf' and 'pdf_file' not in data:
             current_app.logger.error(f"PDF file not found in data for task {task_id}")
             # If we're in 'Warning' state and PDF failed but audio succeeded, return helpful message
-            if data.get('status', '').startswith('Warning') and file_type == 'pdf':
+            if status.startswith('Warning') and file_type == 'pdf':
                 return jsonify({"error": "PDF generation failed, but audio is available"}), 400
             return jsonify({"error": "PDF file not found"}), 404
             
@@ -488,7 +490,9 @@ def download_page(task_id):
             flash("Task not found or has expired", "error")
             return redirect(url_for('main.index'))
             
-        if data.get('status') != 'completed' and not data.get('status', '').startswith('Warning'):
+        # Check both capitalized and lowercased version of 'completed'
+        status = data.get('status', '')
+        if status.lower() != 'completed' and not status.startswith('Warning'):
             flash("Files are still being processed. Please wait until they're ready.", "warning")
             return redirect(url_for('main.index'))
         
@@ -518,7 +522,7 @@ def download_page(task_id):
         return render_template('downloads.html', 
                                task_id=task_id, 
                                download_links=download_links,
-                               status=data.get('status'))
+                               status=status)
                                
     except Exception as e:
         current_app.logger.error(f"Error generating download page for task {task_id}: {str(e)}")
@@ -542,8 +546,10 @@ def direct_download(task_id, file_type):
         if not data:
             return "Task not found. It may have expired.", 404
             
-        if data.get('status') != 'completed' and not data.get('status', '').startswith('Warning'):
-            return f"Task not ready. Current status: {data.get('status')}", 400
+        # Check both capitalized and lowercased version of 'completed'
+        status = data.get('status', '')
+        if status.lower() != 'completed' and not status.startswith('Warning'):
+            return f"Task not ready. Current status: {status}", 400
             
         file_key = f"{file_type}_file"
         if file_key not in data:

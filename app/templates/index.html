@@ -674,7 +674,9 @@
                 progressBarFill.style.width = `${data.progress}%`;
                 statusMessage.textContent = data.status || "Processing...";
                 
-                if (data.status === 'completed' || data.status.startsWith('Warning')) {
+                // Use case-insensitive comparison for the status
+                const isCompleted = data.status && (data.status.toLowerCase() === 'completed' || data.status.startsWith('Warning'));
+                if (isCompleted) {
                     const outputFormat = document.getElementById("output_format").value;
                     
                     // Check if there's a warning about failed PDF
