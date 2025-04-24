@@ -593,7 +593,7 @@
     }
 
     function checkProgress(taskId) {
-        console.log(`Checking progress for task: ${taskId}`);
+        console.log("Checking progress for task: " + taskId);
         
         // Reset retry count when starting a new progress check
         window.progressRetryCount = 0;
@@ -601,7 +601,7 @@
         // Show task info for debugging purposes
         const statusMessage = document.getElementById("statusMessage");
         if (statusMessage) {
-            statusMessage.innerHTML = `Processing started. Task ID: <span style="font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 3px;">${taskId}</span>`;
+            statusMessage.innerHTML = "Processing started. Task ID: <span style=\"font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 3px;\">" + taskId + "</span>";
         }
         
         // Add direct links to status and downloads
@@ -619,12 +619,11 @@
                 progressContainer.appendChild(taskInfoContainer);
             }
             
-            taskInfoContainer.innerHTML = `
-                <div style="margin-top: 5px;">
-                    <a href="/progress/${taskId}" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">View Status</a>
-                    <a href="/downloads/${taskId}" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">Downloads Page</a>
-                </div>
-            `;
+            taskInfoContainer.innerHTML = 
+                '<div style="margin-top: 5px;">' +
+                '<a href="/progress/' + taskId + '" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">View Status</a>' +
+                '<a href="/downloads/' + taskId + '" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">Downloads Page</a>' +
+                '</div>';
         }
         
         // Start progress checking
@@ -632,19 +631,19 @@
     }
     
     function pollProgress(taskId) {
-        console.log(`Polling progress for task: ${taskId}, attempt: ${window.progressRetryCount || 0 + 1}`);
+        console.log("Polling progress for task: " + taskId + ", attempt: " + ((window.progressRetryCount || 0) + 1));
         
-        fetch(`/progress/${taskId}`)
-            .then(response => {
+        fetch("/progress/" + taskId)
+            .then(function(response) {
                 if (!response.ok) {
                     if (response.status === 404) {
                         throw new Error('Task not found in database. The server may be restarting or the task was deleted.');
                     }
-                    return response.json().then(data => {
-                        throw new Error(data.error || `Server error: ${response.status}`);
+                    return response.json().then(function(data) {
+                        throw new Error(data.error || "Server error: " + response.status);
                     });
                 }
-                return response.text().then(text => {
+                return response.text().then(function(text) {
                     console.log("Progress response text:", text);
                     try {
                         return JSON.parse(text);
@@ -654,142 +653,101 @@
                     }
                 });
             })
-            .then(data => {
+            .then(function(data) {
                 console.log("Progress data:", data);
                 
-                const progressContainer = document.getElementById("progressContainer");
-                const statusMessage = document.getElementById("statusMessage");
+                // Update progress bar
+                const progressBar = document.getElementById("progressBar");
                 const progressBarFill = document.getElementById("progressBarFill");
+                const statusMessage = document.getElementById("statusMessage");
                 
-                if (!progressContainer || !statusMessage || !progressBarFill) {
-                    console.error("Progress elements not found");
-                    return;
-                }
-                
-                if (data.error) {
-                    statusMessage.textContent = `Error: ${data.error}`;
-                    return;
-                }
-                
-                progressBarFill.style.width = `${data.progress}%`;
-                statusMessage.textContent = data.status || "Processing...";
-                
-                // Use case-insensitive comparison for the status
-                const isCompleted = data.status && (data.status.toLowerCase() === 'completed' || data.status.startsWith('Warning'));
-                if (isCompleted) {
-                    const outputFormat = document.getElementById("output_format").value;
+                if (progressBar && progressBarFill && statusMessage) {
+                    progressBar.style.display = "block";
+                    progressBarFill.style.width = data.progress + "%";
+                    statusMessage.textContent = data.status || "Processing...";
                     
-                    // Check if there's a warning about failed PDF
-                    const hasPDFFailure = data.status.includes("PDF failed");
-                    
-                    // Show download button in case automatic download fails
-                    // Create a download container div
-                    let downloadContainer = document.getElementById("downloadContainer");
-                    if (!downloadContainer) {
-                        downloadContainer = document.createElement("div");
-                        downloadContainer.id = "downloadContainer";
-                        downloadContainer.style.marginTop = "1rem";
-                        downloadContainer.style.textAlign = "center";
-                        progressContainer.appendChild(downloadContainer);
-                    }
-                    
-                    // Add a visible download button with timestamp to prevent caching
-                    const timestamp = new Date().getTime();
-                    let downloadUrl;
-                    let buttonText;
-                    
-                    if (outputFormat === "both") {
-                        downloadUrl = "/download/" + taskId + "?type=audio&final=true&t=" + timestamp;
-                        buttonText = "Download Audio";
-                    
-                        // For both formats, show two buttons
-                        downloadContainer.innerHTML = `
-                            <a href="/download/${taskId}?type=audio&final=false&t=${timestamp}" 
-                               class="btn" style="display:inline-block; width:auto; margin:0 5px;" 
-                               target="_blank">Download Audio</a>
-                            <a href="/download/${taskId}?type=pdf&final=true&t=${timestamp}" 
-                               class="btn" style="display:inline-block; width:auto; margin:0 5px;" 
-                               target="_blank">Download PDF</a>
-                            <div style="margin-top:10px">
-                              <a href="/downloads/${taskId}" style="color:#10a37f; text-decoration:underline;">
-                                Go to downloads page
-                              </a>
-                            </div>
-                        `;
-                    } else {
-                        downloadUrl = "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + timestamp;
-                        buttonText = "Download " + (outputFormat === "audio" ? "Audio" : "PDF");
-                    }
-                    
-                    // Add a single button for non-both formats
-                    if (outputFormat !== "both") {
-                        downloadContainer.innerHTML = `
-                            <a href="${downloadUrl}" class="btn" target="_blank">${buttonText}</a>
-                            <div style="margin-top:10px">
-                              <a href="/downloads/${taskId}" style="color:#10a37f; text-decoration:underline;">
-                                Go to downloads page
-                              </a>
-                            </div>
-                        `;
-                    }
-                    
-                    console.log("Processing completed! Attempting automatic download...");
-                    statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
-                    
-                    // For 'both' format with PDF failure, only download audio
-                    if (outputFormat === "both") {
-                        // Update the message based on whether there's a PDF failure
-                        if (hasPDFFailure) {
-                            statusMessage.textContent = "PDF generation failed, downloading audio only...";
+                    // Check if processing is complete
+                    if (data.status === "Completed" || data.progress >= 100) {
+                        console.log("Processing complete!");
+                        
+                        // Get output format
+                        const outputFormat = document.querySelector('input[name="output_format"]:checked').value;
+                        console.log("Output format:", outputFormat);
+                        
+                        // Check if there was a PDF failure (for "both" format)
+                        const hasPDFFailure = data.pdf_generation_failed === true;
+                        
+                        if (outputFormat === "both") {
+                            // Update the message based on whether there's a PDF failure
+                            if (hasPDFFailure) {
+                                statusMessage.textContent = "PDF generation failed, downloading audio only...";
+                            } else {
+                                statusMessage.textContent = "Processing completed! Downloading files...";
+                            }
+                            
+                            const audioTimestamp = new Date().getTime();
+                            console.log("Redirecting to:", "/download/" + taskId + "/audio");
+                            window.location.href = "/download/" + taskId + "/audio";
+                            
+                            // After a short delay, also trigger PDF download if PDF didn't fail
+                            if (!hasPDFFailure) {
+                                setTimeout(function() {
+                                    const pdfTimestamp = new Date().getTime();
+                                    console.log("Also downloading PDF:", "/download/" + taskId + "/pdf");
+                                    window.location.href = "/download/" + taskId + "/pdf";
+                                }, 1500);
+                            }
                         } else {
-                            statusMessage.textContent = "Processing completed! Downloading files...";
+                            // For single file formats (audio, pdf, text)
+                            console.log("Redirecting to:", "/download/" + taskId + "/" + outputFormat);
+                            window.location.href = "/download/" + taskId + "/" + outputFormat;
+                            // Change status message to indicate completion
+                            statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
                         }
                         
-                        const audioTimestamp = new Date().getTime();
-                        console.log("Redirecting to:", "/download/" + taskId + "?type=audio&final=true&t=" + audioTimestamp);
-                        window.location.href = "/download/" + taskId + "?type=audio&final=true&t=" + audioTimestamp;
+                        // Add a direct download button as fallback
+                        const progressContainer = document.getElementById("progressContainer");
+                        if (progressContainer) {
+                            let downloadContainer = document.getElementById("downloadContainer");
+                            if (!downloadContainer) {
+                                downloadContainer = document.createElement("div");
+                                downloadContainer.id = "downloadContainer";
+                                downloadContainer.style.marginTop = "1rem";
+                                downloadContainer.style.textAlign = "center";
+                                progressContainer.appendChild(downloadContainer);
+                            }
+                            
+                            downloadContainer.innerHTML = 
+                                '<a href="/downloads/' + taskId + '" class="btn">Go to Downloads Page</a>';
+                        }
                     } else {
-                        // For single file formats (audio, pdf, text)
-                        // Add a timestamp to prevent caching
-                        const finalTimestamp = new Date().getTime();
-                        console.log("Redirecting to:", "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp);
-                        window.location.href = "/download/" + taskId + "?type=" + outputFormat + "&final=true&t=" + finalTimestamp;
-                        // Change status message to indicate completion
-                        statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
+                        // Continue checking progress every 2 seconds
+                        setTimeout(function() { pollProgress(taskId); }, 2000);
                     }
-                } else if (data.status === 'error') {
-                    statusMessage.textContent = `Error: ${data.error || 'Unknown error occurred'}`;
-                } else {
-                    // Continue checking progress every 2 seconds
-                    setTimeout(() => checkProgress(taskId), 2000);
                 }
             })
-            .catch(error => {
-                console.error('Error checking progress:', error);
-                const statusMessage = document.getElementById("statusMessage");
+            .catch(function(error) {
+                console.error("Error checking progress:", error);
+                var statusMessage = document.getElementById("statusMessage");
                 if (statusMessage) {
-                    statusMessage.textContent = `Error: ${error.message}`;
+                    statusMessage.textContent = "Error: " + error.message;
                 }
                 
                 // Retry a few times before giving up
-                const retryCount = window.progressRetryCount || 0;
-                if (retryCount < 5) {
-                    window.progressRetryCount = retryCount + 1;
-                    console.log(`Retrying progress check (${window.progressRetryCount}/5)...`);
-                    // Use increasing backoff delay
-                    const backoffDelay = 1000 + (retryCount * 500); // 1s, 1.5s, 2s, 2.5s, 3s
-                    setTimeout(() => pollProgress(taskId), backoffDelay);
+                window.progressRetryCount = (window.progressRetryCount || 0) + 1;
+                if (window.progressRetryCount < 5) {
+                    setTimeout(function() { pollProgress(taskId); }, 5000);
                 } else {
                     console.log('Max retries reached, giving up');
                     if (statusMessage) {
-                        const downloadLink = `/downloads/${taskId}`;
-                        statusMessage.innerHTML = `Error tracking progress. <a href="${downloadLink}" style="color:#10a37f;">Try the downloads page</a>.`;
+                        var downloadLink = "/downloads/" + taskId;
+                        statusMessage.innerHTML = "Error tracking progress. <a href=\"" + downloadLink + "\" style=\"color:#10a37f;\">Try the downloads page</a>.";
                     }
                     
                     // Add a direct download button as fallback
-                    const progressContainer = document.getElementById("progressContainer");
+                    var progressContainer = document.getElementById("progressContainer");
                     if (progressContainer) {
-                        let downloadContainer = document.getElementById("downloadContainer");
+                        var downloadContainer = document.getElementById("downloadContainer");
                         if (!downloadContainer) {
                             downloadContainer = document.createElement("div");
                             downloadContainer.id = "downloadContainer";
@@ -798,9 +756,8 @@
                             progressContainer.appendChild(downloadContainer);
                         }
                         
-                        downloadContainer.innerHTML = `
-                            <a href="/downloads/${taskId}" class="btn">Go to Downloads Page</a>
-                        `;
+                        downloadContainer.innerHTML = 
+                            '<a href="/downloads/' + taskId + '" class="btn">Go to Downloads Page</a>';
                     }
                 }
             });
