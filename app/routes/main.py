@@ -231,14 +231,20 @@ def download_file(task_id, file_type):
         logger.info(f"[{task_id}] Attempting Redis fetch for type: {file_type}")
         redis_client = get_redis()
         content_key = f"file_content:{task_id}:{file_type}"
+        logger.info(f"[{task_id}] Constructed Redis key: {content_key}")  # Log the key
         file_content = None
         try:
             file_content = redis_client.get(content_key)
+            if file_content:
+                logger.info(f"[{task_id}] Successfully retrieved {len(file_content)} bytes from Redis key {content_key}") # Log success and size
+            else:
+                logger.warning(f"[{task_id}] Redis key {content_key} returned None.") # Log if None
         except Exception as e:
             logger.error(f"[{task_id}] Error accessing Redis key {content_key}: {str(e)}")
+            file_content = None # Ensure file_content is None on error
 
         if file_content:
-            logger.info(f"[{task_id}] Retrieved {len(file_content)} bytes from Redis for {file_type} (key: {content_key}).")
+            # logger.info(f"[{task_id}] Retrieved {len(file_content)} bytes from Redis for {file_type} (key: {content_key}).") # Redundant now
             
             # Determine filename and mimetype
             # We don't have the original filename easily accessible anymore in progress data
