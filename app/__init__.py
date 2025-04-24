@@ -148,8 +148,41 @@ def create_app():
                 app.logger.info(f"Found matching file: {target_file}")
                 return send_from_directory(output_dir, target_file, as_attachment=True)
             else:
-                app.logger.error(f"No matching {file_type} file found for UUID {uuid}")
-                return f"No matching {file_type} file found", 404
+                app.logger.warning(f"No matching {file_type} file in filesystem for UUID {uuid}, checking Redis")
+                # If no file found on filesystem, try getting from Redis
+                from app.utils.redis_helper import get_redis
+                from io import BytesIO
+                from flask import send_file
+                
+                # Try to get from Redis
+                try:
+                    redis_client = get_redis()
+                    content_key = f"file_content:{uuid}:{file_type}"
+                    app.logger.info(f"Trying Redis key: {content_key}")
+                    
+                    file_content = redis_client.get(content_key)
+                    
+                    if file_content:
+                        app.logger.info(f"Found file content in Redis for {uuid}, size: {len(file_content)} bytes")
+                        
+                        # Determine filename and mimetype
+                        file_extension = 'mp3' if file_type == 'audio' else ('pdf' if file_type == 'pdf' else 'txt')
+                        download_filename = f"docecho_{uuid}.{file_extension}"
+                        mimetype = 'audio/mpeg' if file_type == 'audio' else ('application/pdf' if file_type == 'pdf' else 'text/plain')
+                        
+                        # Send the file content from memory
+                        return send_file(
+                            BytesIO(file_content), 
+                            as_attachment=True,
+                            download_name=download_filename,
+                            mimetype=mimetype
+                        )
+                    else:
+                        app.logger.error(f"No content found in Redis for key: {content_key}")
+                        return f"File not found for {uuid}", 404
+                except Exception as e:
+                    app.logger.error(f"Error retrieving from Redis: {str(e)}")
+                    return f"Error retrieving file: {str(e)}", 500
                 
         except Exception as e:
             app.logger.error(f"Error in download_by_uuid: {str(e)}")
