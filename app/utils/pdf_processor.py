@@ -37,12 +37,12 @@ language_map = {
     "fr": {"lang": "fr", "tld": "fr"},
     "de": {"lang": "de", "tld": "de"},
     "it": {"lang": "it", "tld": "it"},
-    "zh-CN": {"lang": "zh-CN", "tld": "com"},
-    "ja": {"lang": "ja", "tld": "co.jp"},
+    "zh-CN": {"lang": "zh-CN", "tld": "com", "problematic": True},
+    "ja": {"lang": "ja", "tld": "co.jp", "problematic": True},
     "ru": {"lang": "ru", "tld": "ru"},
-    "ar": {"lang": "ar", "tld": "com.sa"},    # Arabic
-    "hi": {"lang": "hi", "tld": "co.in"},     # Hindi
-    "ko": {"lang": "ko", "tld": "co.kr"},     # Korean
+    "ar": {"lang": "ar", "tld": "com.sa", "problematic": True},    # Arabic
+    "hi": {"lang": "hi", "tld": "co.in", "problematic": True},     # Hindi
+    "ko": {"lang": "ko", "tld": "co.kr", "problematic": True},     # Korean
     "tr": {"lang": "tr", "tld": "com.tr"},    # Turkish
     "nl": {"lang": "nl", "tld": "nl"},        # Dutch
     "pl": {"lang": "pl", "tld": "pl"}         # Polish
@@ -369,24 +369,39 @@ def translate_with_timeout(translator, text, dest, timeout=10):
     return result, None
 
 def save_file_to_redis(file_path, task_id, file_type):
-    """Store file content in Redis as a backup mechanism"""
+    """Save file content to Redis with proper error handling"""
     try:
+        from app.utils.redis import get_redis
+        import os
+        
         if not os.path.exists(file_path):
-            current_app.logger.error(f"File not found at {file_path}, cannot save to Redis")
+            logger.error(f"[{task_id}] File not found at path {file_path}")
             return False
             
-        redis_client = get_redis()
+        # Read file content
         with open(file_path, 'rb') as f:
             file_content = f.read()
             
-        # Store the file content in Redis with a key based on task_id and file_type
+        # Get Redis connection
+        redis_client = get_redis()
+        if not redis_client:
+            logger.error(f"[{task_id}] Could not get Redis connection")
+            return False
+            
+        # Set the content in Redis with a key that includes task_id and file_type
         content_key = f"file_content:{task_id}:{file_type}"
-        redis_client.set(content_key, file_content, ex=86400)  # Expire after 24 hours
         
-        current_app.logger.info(f"Successfully stored {file_type} content in Redis for task {task_id}")
-        return True
+        # Store file content with 7-day expiration (604800 seconds)
+        try:
+            redis_client.set(content_key, file_content, ex=604800)
+            logger.info(f"[{task_id}] Saved {len(file_content)} bytes to Redis key {content_key}")
+            return True
+        except Exception as redis_err:
+            logger.error(f"[{task_id}] Error storing content in Redis: {str(redis_err)}")
+            return False
+            
     except Exception as e:
-        current_app.logger.error(f"Error saving file to Redis: {str(e)}")
+        logger.error(f"[{task_id}] Error in save_file_to_redis: {str(e)}")
         return False
 
 @celery.task(bind=True)

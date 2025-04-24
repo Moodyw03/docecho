@@ -707,7 +707,7 @@
             .then(function(data) {
                 console.log("Progress data:", data);
                 
-                // Handle case where we get back just a task_id (API compatibility issue)
+                // Handle case where we might get just a task_id (API compatibility issue)
                 if (data && data.task_id && Object.keys(data).length === 1) {
                     console.log("Got only task_id in response. Redirecting to downloads page.");
                     window.location.href = "/downloads/" + taskId;
@@ -721,7 +721,7 @@
                 
                 if (progressBar && progressBarFill && statusMessage) {
                     progressBar.style.display = "block";
-                    progressBarFill.style.width = data.progress + "%";
+                    progressBarFill.style.width = (data.progress || 0) + "%";
                     statusMessage.textContent = data.status || "Processing...";
                     
                     // Check if processing is complete
@@ -843,7 +843,8 @@
         }
         
         const selectedVoice = voiceSelect.value;
-        // Update this list to include all languages with font rendering issues
+        // Get problematic languages from the server configuration
+        // These are the languages that have font rendering issues with PDF
         const problematicLanguages = ['ja', 'zh-CN', 'ar', 'hi', 'ko'];
         
         if (problematicLanguages.includes(selectedVoice)) {

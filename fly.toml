@@ -31,6 +31,11 @@ primary_region = "lhr"
   # GUNICORN_WORKERS = "2"
   # GUNICORN_THREADS = "4"
   # GUNICORN_TIMEOUT = "300"
+  APP_ENV = "production"
+  LANGUAGES_SUPPORTED = "en,en-uk,pt,es,fr,de,it,zh-CN,ja,ru,ar,hi,ko,tr,nl,pl"
+  OUTPUT_FOLDER = "/app/data/output"
+  UPLOAD_FOLDER = "/app/data/uploads"
+  TEMP_FOLDER = "/app/data/temp"
 
 [build]
   dockerfile = "Dockerfile"

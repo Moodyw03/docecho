@@ -41,6 +41,9 @@ def create_app():
     # Load configuration from Config class
     app.config.from_object(Config)
     
+    # Add supported languages to the app config
+    app.config['LANGUAGES_SUPPORTED'] = app.config.get('LANGUAGES_SUPPORTED', 'en').split(',')
+    
     # Override with environment-specific settings
     app.config.update(
         JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', 'fallback_secret_for_dev'),
@@ -118,11 +121,18 @@ def create_app():
     @app.route('/download/<uuid>')
     def download_by_uuid(uuid):
         """Download a file by UUID with type parameter"""
+        # Check for query parameter first, then assume audio as default
         file_type = request.args.get('type', 'audio')
         output_dir = app.config.get('OUTPUT_FOLDER', '.')
         
+        app.logger.info(f"Download request for {uuid}, type={file_type}")
+        
         # List files in the output directory
         try:
+            if not os.path.exists(output_dir):
+                app.logger.error(f"Output directory does not exist: {output_dir}")
+                return redirect(url_for('main.downloads_page', _external=True))
+            
             files = os.listdir(output_dir)
             app.logger.info(f"Files in output directory: {files}")
             

@@ -68,4 +68,27 @@ class DummyRedisClient:
         """Check if a key exists"""
         exists = key in self.storage
         logger.info(f"DummyRedis: EXISTS {key} -> {exists}")
-        return exists 
+        return exists
+        
+    def mset(self, mapping):
+        """Set multiple keys"""
+        for k, v in mapping.items():
+            self.storage[k] = v
+        logger.info(f"DummyRedis: MSET {list(mapping.keys())}")
+        return True
+        
+    def keys(self, pattern="*"):
+        """Get keys matching a pattern (simple implementation)"""
+        if pattern == "*":
+            return list(self.storage.keys())
+        matching_keys = []
+        for key in self.storage.keys():
+            if pattern in key:
+                matching_keys.append(key)
+        logger.info(f"DummyRedis: KEYS {pattern} -> found {len(matching_keys)} keys")
+        return matching_keys
+        
+    def expire(self, key, seconds):
+        """Set expiration on key (not implemented in dummy)"""
+        logger.info(f"DummyRedis: EXPIRE {key} {seconds} (not implemented)")
+        return True  # Just pretend it worked 
