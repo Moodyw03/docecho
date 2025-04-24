@@ -464,102 +464,109 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         
         logger.info(f"[{task_id}] PDF processing finished successfully. Output: {final_output_path}")
         
-        # Upload result to remote storage (if configured)
-        remote_url_final = None # Initialize remote URL variable
-        try:
-            # Check if final_output_path exists before attempting upload or Redis save
-            if final_output_path and os.path.exists(final_output_path):
-                logger.info(f"[{task_id}] Attempting to upload to remote storage: {final_output_path}")
-                remote_url_final = copy_to_remote_storage(final_output_path, f"{task_id}/{os.path.basename(final_output_path)}")
-                if remote_url_final:
-                    logger.info(f"[{task_id}] Successfully uploaded {os.path.basename(final_output_path)} to remote storage: {remote_url_final}")
-                    # Update progress immediately with remote URL if available
-                    progress_update_data = {
-                        'remote_file_url': remote_url_final
-                    }
-                    if output_format == 'audio':
-                        progress_update_data['remote_audio_url'] = remote_url_final
-                    elif output_format == 'pdf':
-                         progress_update_data['remote_pdf_url'] = remote_url_final
-                    elif output_format == 'both':
-                        # Need to handle 'both' case - which URL is this? Assuming it's the *last* created file (PDF if successful)
-                        # Or maybe upload both and store separate URLs?
-                        # For now, store it generically and potentially specifically for PDF
-                        progress_update_data['remote_pdf_url'] = remote_url_final
-                        # If audio was also created, maybe try uploading that too?
-                        # This logic might need refinement based on desired behavior for 'both' + S3
-                    
-                    # Merge this update with the final status update
-                    update_progress(task_id, **progress_update_data)
-                else:
-                     logger.warning(f"[{task_id}] copy_to_remote_storage returned None. Upload skipped or failed.")
-                     
-                # Save to Redis as a fallback if remote storage didn't work or isn't configured
-                # Determine file_type for Redis key
-                redis_file_type = 'unknown'
-                if output_format == 'audio': redis_file_type = 'audio'
-                elif output_format == 'pdf': redis_file_type = 'pdf'
-                elif output_format == 'text': redis_file_type = 'text' 
-                # 'both' case: What should we save? Maybe save both audio and pdf?
-                # For now, let's save the primary output (audio first, then potentially overwritten by pdf)
-                elif output_format == 'both':
-                    # Save audio first
-                    audio_path_for_redis = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
-                    if os.path.exists(audio_path_for_redis):
-                        logger.info(f"[{task_id}] Saving audio file content to Redis as fallback: {audio_path_for_redis}")
-                        save_file_to_redis(audio_path_for_redis, task_id, 'audio')
-                    # Then save PDF if it exists
-                    pdf_path_for_redis = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
-                    if os.path.exists(pdf_path_for_redis):
-                        logger.info(f"[{task_id}] Saving PDF file content to Redis as fallback: {pdf_path_for_redis}")
-                        save_file_to_redis(pdf_path_for_redis, task_id, 'pdf')
-                        redis_file_type = 'pdf' # Indicate PDF was the last saved for single save below
-                    else:
-                         redis_file_type = 'audio' # If PDF failed, audio was the one
-                
-                # Save single file formats or the last successful one from 'both'
-                if output_format != 'both':
-                     logger.info(f"[{task_id}] Saving {redis_file_type} file content to Redis as fallback: {final_output_path}")
-                     save_file_to_redis(final_output_path, task_id, redis_file_type)
-            else:
-                 logger.warning(f"[{task_id}] Final output file {final_output_path} not found. Skipping S3 upload and Redis save.")
-                 
-        except Exception as e:
-            logger.error(f"[{task_id}] Error during remote storage upload or Redis save: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc()) # Log full traceback for this error
-        
-        # Final progress update after all operations
-        final_progress_data = {'status': 'Completed', 'progress': 100}
-        if output_format == 'audio':
-            final_progress_data['audio_file'] = final_output_path
-        elif output_format == 'pdf':
-            final_progress_data['pdf_file'] = final_output_path
-        elif output_format == 'text':
-             final_progress_data['text_file'] = final_output_path
+        # --- Post-processing: Save to Redis/S3 & Update Progress --- 
+        logger.info(f"[{task_id}] Task completed locally. Preparing for Redis/S3 storage and final progress update.")
+
+        final_file_paths = {}
+        if output_format == 'audio' and final_output_path and os.path.exists(final_output_path):
+            final_file_paths['audio'] = final_output_path
+        elif output_format == 'pdf' and final_output_path and os.path.exists(final_output_path):
+            final_file_paths['pdf'] = final_output_path
+        elif output_format == 'text' and final_output_path and os.path.exists(final_output_path):
+            final_file_paths['text'] = final_output_path
         elif output_format == 'both':
             audio_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}.mp3")
             pdf_path = os.path.join(output_path, f"{os.path.splitext(filename)[0]}_translated.pdf")
             if os.path.exists(audio_path):
-                 final_progress_data['audio_file'] = audio_path
-            if os.path.exists(pdf_path):
-                 final_progress_data['pdf_file'] = pdf_path
-             # If PDF creation failed earlier, status would contain 'Warning'
-            if 'Warning' in status:
-                 final_progress_data['status'] = status # Keep the warning status
-        # Add remote URL if it was successfully obtained
-        if remote_url_final:
-             final_progress_data['remote_file_url'] = remote_url_final
-             # Add specific type URLs too
-             if output_format == 'audio' or (output_format == 'both' and 'audio_file' in final_progress_data):
-                 final_progress_data['remote_audio_url'] = remote_url_final
-             if output_format == 'pdf' or (output_format == 'both' and 'pdf_file' in final_progress_data):
-                 final_progress_data['remote_pdf_url'] = remote_url_final
-                 
-        update_progress(task_id, **final_progress_data)
-        logger.info(f"[{task_id}] Final progress update: {final_progress_data}")
+                final_file_paths['audio'] = audio_path
+            # Check pdf_path existence, considering it might have failed
+            if 'Warning' not in status and os.path.exists(pdf_path):
+                 final_file_paths['pdf'] = pdf_path
+            elif 'Warning' in status:
+                 logger.warning(f"[{task_id}] PDF file likely failed, status: {status}. Skipping PDF for Redis/S3.")
+            else: # PDF path doesn't exist even though status wasn't Warning
+                 logger.warning(f"[{task_id}] PDF file path {pdf_path} not found despite no warning status. Skipping PDF for Redis/S3.")
 
-        return final_output_path # Return the path to the final output
+        # Ensure we have at least one file path if processing seemed successful
+        if not final_file_paths and 'Warning' not in status:
+             error_msg = f"No output file paths found for format '{output_format}' despite successful processing steps."
+             logger.error(f"[{task_id}] {error_msg}")
+             update_progress(task_id, status=f'Error: {error_msg}', progress=100, error=True)
+             raise Exception(error_msg)
+
+        # --- Save to Redis and/or S3 ---
+        redis_saved_types = []
+        s3_remote_urls = {}
+
+        for file_type, local_path in final_file_paths.items():
+            logger.info(f"[{task_id}] Processing storage for {file_type} file: {local_path}")
+            # 1. Attempt S3 Upload (if configured)
+            remote_url = None
+            try:
+                logger.info(f"[{task_id}] Attempting S3 upload for {local_path}")
+                remote_url = copy_to_remote_storage(local_path, f"{task_id}/{os.path.basename(local_path)}")
+                if remote_url:
+                    s3_remote_urls[file_type] = remote_url
+                    logger.info(f"[{task_id}] S3 Upload successful for {file_type}: {remote_url}")
+                else:
+                    logger.info(f"[{task_id}] S3 upload skipped or failed for {file_type} (not configured or error).")
+            except Exception as e:
+                logger.error(f"[{task_id}] Error uploading {file_type} to S3: {str(e)}", exc_info=True)
+
+            # 2. Save to Redis (always attempt as fallback or primary if no S3)
+            try:
+                logger.info(f"[{task_id}] Saving {file_type} content to Redis: {local_path}")
+                redis_saved = save_file_to_redis(local_path, task_id, file_type)
+                if redis_saved:
+                    redis_saved_types.append(file_type)
+                    logger.info(f"[{task_id}] Successfully saved {file_type} content to Redis.")
+                else:
+                    logger.warning(f"[{task_id}] Failed to save {file_type} content to Redis.")
+            except Exception as e:
+                 logger.error(f"[{task_id}] Error saving {file_type} to Redis: {str(e)}", exc_info=True)
+
+        # --- Final Progress Update --- 
+        # Remove local file paths, only include remote URLs if available
+        final_progress_data = {
+            'status': status if 'Warning' in status else 'Completed',
+            'progress': 100,
+            'redis_saved': redis_saved_types, # Indicate which types are in Redis
+        }
+        # Add S3 URLs if they exist
+        if s3_remote_urls:
+             final_progress_data['remote_urls'] = s3_remote_urls # Store as a dict {'audio': url, 'pdf': url}
+             # Keep legacy keys for now for compatibility in download route?
+             if 'audio' in s3_remote_urls:
+                 final_progress_data['remote_audio_url'] = s3_remote_urls['audio']
+             if 'pdf' in s3_remote_urls:
+                  final_progress_data['remote_pdf_url'] = s3_remote_urls['pdf']
+             # Add a generic one - maybe the first one found?
+             final_progress_data['remote_file_url'] = next(iter(s3_remote_urls.values()), None)
+        
+        # Check if *anything* was successfully stored
+        if not redis_saved_types and not s3_remote_urls and 'Warning' not in status:
+            error_msg = f"Failed to save output to Redis or S3 for task {task_id}."
+            logger.error(f"[{task_id}] {error_msg}")
+            final_progress_data['status'] = 'Error: Storage Failed'
+            final_progress_data['error'] = error_msg
+            update_progress(task_id, **final_progress_data)
+            raise Exception(error_msg)
+            
+        update_progress(task_id, **final_progress_data)
+        logger.info(f"[{task_id}] Final progress update (no local paths): {final_progress_data}")
+
+        # --- Cleanup Local Files --- 
+        logger.info(f"[{task_id}] Cleaning up local output files.")
+        for file_type, local_path in final_file_paths.items():
+            try:
+                 if os.path.exists(local_path):
+                     os.remove(local_path)
+                     logger.info(f"[{task_id}] Removed local file: {local_path}")
+            except Exception as e:
+                 logger.warning(f"[{task_id}] Could not remove local output file {local_path}: {e}")
+                 
+        # Return success indication (no path needed anymore)
+        return {"status": "success", "redis_saved": redis_saved_types, "s3_urls": s3_remote_urls}
 
     except Exception as e:
         # Log the exception with traceback for better debugging
