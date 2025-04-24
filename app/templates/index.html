@@ -671,7 +671,7 @@
                         console.log("Processing complete!");
                         
                         // Get output format
-                        const outputFormat = document.querySelector('input[name="output_format"]:checked').value;
+                        const outputFormat = document.getElementById("output_format").value;
                         console.log("Output format:", outputFormat);
                         
                         // Check if there was a PDF failure (for "both" format)
@@ -686,21 +686,31 @@
                             }
                             
                             const audioTimestamp = new Date().getTime();
-                            console.log("Redirecting to:", "/download/" + taskId + "/audio");
-                            window.location.href = "/download/" + taskId + "/audio";
+                            console.log("Redirecting to:", "/download/" + taskId + "?type=audio");
+                            window.location.href = "/download/" + taskId + "?type=audio";
                             
                             // After a short delay, also trigger PDF download if PDF didn't fail
                             if (!hasPDFFailure) {
                                 setTimeout(function() {
                                     const pdfTimestamp = new Date().getTime();
-                                    console.log("Also downloading PDF:", "/download/" + taskId + "/pdf");
-                                    window.location.href = "/download/" + taskId + "/pdf";
+                                    console.log("Also downloading PDF:", "/download/" + taskId + "?type=pdf");
+                                    
+                                    // Create an invisible iframe for the second download instead of changing location
+                                    const downloadFrame = document.createElement('iframe');
+                                    downloadFrame.style.display = 'none';
+                                    downloadFrame.src = "/download/" + taskId + "?type=pdf";
+                                    document.body.appendChild(downloadFrame);
+                                    
+                                    // Optional: Remove the iframe after download starts
+                                    setTimeout(() => {
+                                        document.body.removeChild(downloadFrame);
+                                    }, 5000);
                                 }, 1500);
                             }
                         } else {
                             // For single file formats (audio, pdf, text)
-                            console.log("Redirecting to:", "/download/" + taskId + "/" + outputFormat);
-                            window.location.href = "/download/" + taskId + "/" + outputFormat;
+                            console.log("Redirecting to:", "/download/" + taskId + "?type=" + outputFormat);
+                            window.location.href = "/download/" + taskId + "?type=" + outputFormat;
                             // Change status message to indicate completion
                             statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
                         }
