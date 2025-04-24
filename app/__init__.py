@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, current_app, send_from_directory
+from flask import Flask, request, redirect, current_app, send_from_directory, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
@@ -179,14 +179,23 @@ def create_app():
                         )
                     else:
                         app.logger.error(f"No content found in Redis for key: {content_key}")
-                        return f"File not found for {uuid}", 404
+                        # Redirect to downloads page instead of showing an error
+                        if hasattr(app, 'config') and app.config.get('DEBUG', False):
+                            return f"File not found for {uuid}. Redis key: {content_key}", 404
+                        return redirect(url_for('main.downloads_page', _external=True))
                 except Exception as e:
                     app.logger.error(f"Error retrieving from Redis: {str(e)}")
-                    return f"Error retrieving file: {str(e)}", 500
+                    # Redirect to downloads page instead of showing an error
+                    if hasattr(app, 'config') and app.config.get('DEBUG', False):
+                        return f"Error retrieving file: {str(e)}", 500
+                    return redirect(url_for('main.downloads_page', _external=True))
                 
         except Exception as e:
             app.logger.error(f"Error in download_by_uuid: {str(e)}")
-            return f"Error accessing files: {str(e)}", 500
+            # Redirect to downloads page instead of showing an error
+            if hasattr(app, 'config') and app.config.get('DEBUG', False):
+                return f"Error accessing files: {str(e)}", 500
+            return redirect(url_for('main.downloads_page', _external=True))
 
     return app
 

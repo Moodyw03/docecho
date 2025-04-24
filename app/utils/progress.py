@@ -214,13 +214,30 @@ def get_progress(task_id):
             logger.info(f"[{task_id}] Using file-based progress data for task {task_id}")
             return file_data
 
+        # No data found in database or file storage, return a default initializing state
+        # This is better than returning None and will prevent errors downstream
         logger.warning(f"[{task_id}] No progress data found for task {task_id} in database or file storage")
-        return None
+        return {
+            'status': 'initializing',
+            'progress': 0,
+            'message': 'Task is still initializing...',
+            'task_id': task_id
+        }
 
     except Exception as e:
         logger.error(f"[{task_id}] Error getting progress: {str(e)}", exc_info=True)
         # Fall back to file storage as last resort on unexpected error
-        return _load_progress_from_file(task_id)
+        file_data = _load_progress_from_file(task_id)
+        if file_data:
+            return file_data
+        
+        # If all else fails, return a default response
+        return {
+            'status': 'initializing',
+            'progress': 0,
+            'message': 'Error retrieving progress. Task may be restarting...',
+            'task_id': task_id
+        }
 
 def _get_progress_internal(task_id):
     """Internal function to get progress with proper error handling. Assumes app context."""

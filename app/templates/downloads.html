@@ -74,54 +74,138 @@
 {% endblock %}
 
 {% block content %}
-<div class="download-container">
-    <h1>Your Files Are Ready</h1>
-    
-    {% if status and status.startswith('Warning') %}
-    <div class="status warning">
-        <p>{{ status }}</p>
-    </div>
-    {% else %}
-    <div class="status">
-        <p>Status: {{ status }}</p>
-    </div>
-    {% endif %}
-    
-    <p>Your files have been processed and are ready for download. Click the links below to download your files.</p>
-    
-    <div class="download-links">
-        {% if download_links.audio %}
-        <a href="{{ download_links.audio.url }}" class="download-btn">
-            Download Audio File ({{ download_links.audio.filename }})
-        </a>
-        {% endif %}
+<div class="container">
+    <div class="glass-container">
+        <h1>Your Downloads</h1>
         
-        {% if download_links.pdf %}
-        <a href="{{ download_links.pdf.url }}" class="download-btn">
-            Download PDF File ({{ download_links.pdf.filename }})
-        </a>
+        {% if files %}
+            <div class="file-list">
+                {% for file in files %}
+                <div class="file-item">
+                    <div class="file-info">
+                        <span class="file-name">{{ file.name }}</span>
+                        <span class="file-meta">{{ file.created }} | {{ (file.size / 1024)|round(1) }} KB</span>
+                    </div>
+                    <div class="file-actions">
+                        <a href="{{ file.url }}" class="download-btn">Download</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>You don't have any downloads available.</p>
+                <a href="{{ url_for('main.index') }}" class="btn">Back to Home</a>
+            </div>
         {% endif %}
     </div>
-    
-    <div style="margin-top: 20px; text-align: center;">
-        <p style="font-size: 0.9rem; color: #666;">
-            If the downloads above don't work, try these direct links:
-        </p>
-        <div style="margin-top: 10px;">
-            {% if download_links.audio %}
-            <a href="/direct-download/{{ task_id }}/audio" style="color: #10a37f; margin: 0 10px; text-decoration: underline;">
-                Direct Audio Download
-            </a>
-            {% endif %}
-            
-            {% if download_links.pdf %}
-            <a href="/direct-download/{{ task_id }}/pdf" style="color: #10a37f; margin: 0 10px; text-decoration: underline;">
-                Direct PDF Download
-            </a>
-            {% endif %}
-        </div>
-    </div>
-    
-    <a href="{{ url_for('main.index') }}" class="back-btn">Back to Home</a>
 </div>
+
+<style>
+    .container {
+        padding: 2rem;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    .glass-container {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+        color: #10a37f;
+        margin-bottom: 1.5rem;
+        font-size: 1.8rem;
+        text-align: center;
+    }
+    
+    .file-list {
+        margin-top: 1.5rem;
+    }
+    
+    .file-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+    
+    .file-info {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .file-name {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.25rem;
+    }
+    
+    .file-meta {
+        font-size: 0.8rem;
+        color: #888;
+    }
+    
+    .file-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .download-btn {
+        background: #10a37f;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 0.9rem;
+        transition: background 0.2s;
+    }
+    
+    .download-btn:hover {
+        background: #0e8c6d;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 2rem 0;
+        color: #666;
+    }
+    
+    .empty-state p {
+        margin-bottom: 1.5rem;
+    }
+    
+    .btn {
+        background: #10a37f;
+        color: white;
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+    
+    .btn:hover {
+        background: #0e8c6d;
+    }
+    
+    @media (max-width: 768px) {
+        .file-item {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .file-actions {
+            margin-top: 1rem;
+            align-self: flex-end;
+        }
+    }
+</style>
 {% endblock %} 

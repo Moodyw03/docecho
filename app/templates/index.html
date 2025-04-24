@@ -707,6 +707,13 @@
             .then(function(data) {
                 console.log("Progress data:", data);
                 
+                // Handle case where we get back just a task_id (API compatibility issue)
+                if (data && data.task_id && Object.keys(data).length === 1) {
+                    console.log("Got only task_id in response. Redirecting to downloads page.");
+                    window.location.href = "/downloads/" + taskId;
+                    return;
+                }
+                
                 // Update progress bar
                 const progressBar = document.getElementById("progressBar");
                 const progressBarFill = document.getElementById("progressBarFill");

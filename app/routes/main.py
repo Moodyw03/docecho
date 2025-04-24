@@ -682,3 +682,46 @@ def test_pdf_rendering(language_code):
     except Exception as e:
         current_app.logger.error(f"Error in test-pdf route: {str(e)}")
         return f"Error generating test PDF: {str(e)}", 500
+
+@bp.route('/downloads')
+@login_required
+def downloads_page():
+    """Show user's available downloads"""
+    if not current_user.is_authenticated:
+        return redirect(url_for('auth.login'))
+        
+    # Get info about files available for this user
+    user_id = current_user.id
+    
+    # Get the output directory from config
+    output_dir = current_app.config.get('OUTPUT_FOLDER', '.')
+    
+    # This will store file information to display
+    available_files = []
+    
+    try:
+        # Check for files in the output directory
+        if os.path.exists(output_dir):
+            files = os.listdir(output_dir)
+            
+            # Filter files for this user (using a naming convention or metadata)
+            for filename in files:
+                # Your logic to determine if file belongs to user
+                # For example, check for user_id in filename or metadata
+                # This is a placeholder logic - adapt to your actual file naming convention
+                if f"user_{user_id}_" in filename or f"_{user_id}_" in filename:
+                    file_path = os.path.join(output_dir, filename)
+                    file_info = {
+                        'name': filename,
+                        'size': os.path.getsize(file_path),
+                        'created': datetime.fromtimestamp(os.path.getctime(file_path)).strftime('%Y-%m-%d %H:%M'),
+                        'url': url_for('main.download_file', task_id=filename.split('.')[0])
+                    }
+                    available_files.append(file_info)
+    except Exception as e:
+        current_app.logger.error(f"Error listing files: {str(e)}")
+    
+    return render_template('downloads.html', 
+                          files=available_files, 
+                          page_title='Your Downloads',
+                          user=current_user)
