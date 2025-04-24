@@ -93,11 +93,25 @@ def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, t
         # Rename confusing variable name
         temp_audio_chunk_path = os.path.join(temp_directory, output_filename) 
 
+        # Translate the text to the target language first
+        translator = Translator()
+        try:
+            translated_text, error = translate_with_timeout(translator, text, dest=voice, timeout=30)
+            if error:
+                logger.warning(f"Translation failed, using original text: {error}")
+                translated_text = text
+            elif not translated_text:
+                logger.warning("Translation returned empty result, using original text")
+                translated_text = text
+        except Exception as e:
+            logger.warning(f"Translation error: {e}, using original text")
+            translated_text = text
+
         # Add timeout/retry logic for gTTS
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                tts = gTTS(text, lang=voice, tld=tld)
+                tts = gTTS(translated_text, lang=voice, tld=tld)
                 tts.save(temp_output)
                 break
             except (requests.exceptions.RequestException, Exception) as e:
