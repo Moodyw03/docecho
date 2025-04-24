@@ -836,18 +836,37 @@
         }
         
         const selectedVoice = voiceSelect.value;
-        const asianLanguages = ['ja', 'zh-CN', 'ru'];
+        // Update this list to include all languages with font rendering issues
+        const problematicLanguages = ['ja', 'zh-CN', 'ar', 'hi', 'ko'];
         
-        if (asianLanguages.includes(selectedVoice)) {
+        if (problematicLanguages.includes(selectedVoice)) {
+            // Force audio-only for problematic languages
             outputFormat.value = 'audio';
             outputFormat.disabled = true;
-            if (formatNote) {
-                formatNote.style.display = "block";
+            // Add or update a format note to inform the user
+            let noteElem = document.getElementById("formatNote");
+            if (!noteElem) {
+                noteElem = document.createElement("div");
+                noteElem.id = "formatNote";
+                noteElem.style.color = "#e67e22";
+                noteElem.style.fontSize = "0.8rem";
+                noteElem.style.marginTop = "0.3rem";
+                noteElem.style.padding = "0.3rem";
+                noteElem.style.background = "rgba(230, 126, 34, 0.1)";
+                noteElem.style.borderRadius = "5px";
+                outputFormat.parentNode.appendChild(noteElem);
             }
+            noteElem.style.display = "block";
+            noteElem.textContent = "This language is only available in audio format due to font rendering limitations.";
         } else {
             outputFormat.disabled = false;
             if (formatNote) {
                 formatNote.style.display = "none";
+            }
+            // Also check for any existing format note element
+            const noteElem = document.getElementById("formatNote");
+            if (noteElem) {
+                noteElem.style.display = "none";
             }
         }
         

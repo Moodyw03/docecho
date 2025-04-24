@@ -72,6 +72,12 @@ def process_file():
             output_format = request.form.get("output_format", "audio")
             speed = float(request.form.get("speed", "1.0"))
             
+            # Validate problematic languages
+            problematic_languages = ['ja', 'zh-CN', 'ar', 'hi', 'ko']
+            if voice in problematic_languages and output_format != "audio":
+                current_app.logger.warning(f"Language {voice} was requested with non-audio format. Forcing to audio-only.")
+                output_format = "audio"
+            
             required_credits = 1
             if output_format in ["audio", "both"]:
                 required_credits += 1  # Add 1 more for audio (2 total for audio, 3 for both)
@@ -616,3 +622,63 @@ def direct_download(task_id, file_type):
     except Exception as e:
         current_app.logger.error(f"Error in direct download: {e}")
         return f"Error: {str(e)}", 500
+
+@bp.route('/test-pdf/<language_code>', methods=['GET'])
+@login_required
+def test_pdf_rendering(language_code):
+    """
+    Test route for PDF rendering in different languages
+    This is only for admin/testing purposes
+    """
+    # Only allow admins or in development mode
+    if not (current_user.is_admin or current_app.config.get('FLASK_ENV') == 'development'):
+        abort(403)
+    
+    try:
+        from app.utils.pdf_processor import create_translated_pdf
+        import tempfile
+        import os
+        from flask import send_file
+        
+        # Sample text for testing
+        sample_texts = {
+            'ar': """مرحبا بكم في تطبيق DocEcho.
+هذا النص هو مثال على كيفية عرض اللغة العربية.
+نأمل أن يتم عرض النص بشكل صحيح.""",
+            'hi': """DocEcho ऐप में आपका स्वागत है।
+यह टेक्स्ट हिंदी भाषा के प्रदर्शन का एक उदाहरण है।
+हम आशा करते हैं कि टेक्स्ट सही ढंग से दिखाया जाएगा।""",
+            'ko': """DocEcho 앱에 오신 것을 환영합니다.
+이 텍스트는 한국어가 어떻게 표시되는지에 대한 예시입니다.
+텍스트가 올바르게 표시되기를 바랍니다.""",
+            'zh-CN': """欢迎使用 DocEcho 应用程序。
+这段文字是展示中文的示例。
+我们希望文字能够正确显示。""",
+            'ja': """DocEchoアプリへようこそ。
+このテキストは日本語の表示例です。
+テキストが正しく表示されることを願っています。"""
+        }
+        
+        # Default text if language not in sample list
+        default_text = f"This is a test text for {language_code} language.\nWe are testing PDF rendering capabilities.\nThis should display correctly in most Latin-based scripts."
+        
+        # Get the appropriate text
+        text = sample_texts.get(language_code, default_text)
+        
+        # Create a temporary file for the PDF
+        fd, temp_path = tempfile.mkstemp(suffix='.pdf')
+        os.close(fd)
+        
+        # Generate PDF with the test text
+        create_translated_pdf(text, temp_path, language_code=language_code)
+        
+        # Send the file to user
+        return send_file(
+            temp_path,
+            as_attachment=True,
+            download_name=f"test_{language_code}.pdf",
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        current_app.logger.error(f"Error in test-pdf route: {str(e)}")
+        return f"Error generating test PDF: {str(e)}", 500

@@ -212,11 +212,37 @@ def create_translated_pdf(text, output_path, language_code='en'):
         
         # Languages that need special font handling
         complex_script_languages = {
-            "zh-CN": {"needs_special_font": True, "font_family": "SimSun", "fallback": "Helvetica"},
-            "ja": {"needs_special_font": True, "font_family": "HeiseiMin-W3", "fallback": "Helvetica"},
-            "ko": {"needs_special_font": True, "font_family": "Malgun Gothic", "fallback": "Helvetica"},
-            "ar": {"needs_special_font": True, "font_family": "Arial Unicode MS", "fallback": "Helvetica", "rtl": True},
-            "hi": {"needs_special_font": True, "font_family": "Arial Unicode MS", "fallback": "Helvetica"}
+            "zh-CN": {
+                "needs_special_font": True, 
+                "font_family": "SimSun", 
+                "fallback": "Helvetica",
+                "message": "Chinese characters may not render correctly due to font limitations."
+            },
+            "ja": {
+                "needs_special_font": True, 
+                "font_family": "HeiseiMin-W3", 
+                "fallback": "Helvetica",
+                "message": "Japanese characters may not render correctly due to font limitations."
+            },
+            "ko": {
+                "needs_special_font": True, 
+                "font_family": "Malgun Gothic", 
+                "fallback": "Helvetica",
+                "message": "Korean characters may not render correctly due to font limitations."
+            },
+            "ar": {
+                "needs_special_font": True, 
+                "font_family": "Arial Unicode MS", 
+                "fallback": "Helvetica", 
+                "rtl": True,
+                "message": "Arabic text requires right-to-left rendering which is not fully supported. Characters may appear in reverse order."
+            },
+            "hi": {
+                "needs_special_font": True, 
+                "font_family": "Arial Unicode MS", 
+                "fallback": "Helvetica",
+                "message": "Hindi/Devanagari script may not render correctly due to font limitations."
+            }
         }
         
         # Check if language needs special handling
@@ -224,20 +250,33 @@ def create_translated_pdf(text, output_path, language_code='en'):
             logger.info(f"Using special font handling for language: {language_code}")
             font_config = complex_script_languages[language_code]
             
-            # For languages with complex scripts, we'll add a note about possible font rendering issues
-            note = "Note: Some characters may not render correctly due to font limitations."
+            # For languages with complex scripts, we'll add a specific warning note
+            warning_message = font_config.get("message", "Some characters may not render correctly due to font limitations.")
             c.setFont("Helvetica", 9)
-            c.drawString(50, height - 30, note)
+            c.drawString(50, height - 30, f"Warning: {warning_message}")
             
             # Use fallback font since we can't guarantee the availability of specialized fonts
             font_name = font_config["fallback"]
             
-            # For RTL languages like Arabic, add a note
-            if font_config.get("rtl", False):
-                rtl_note = "Note: For Arabic text, characters may appear in reverse order."
+            # Special handling for RTL languages (like Arabic)
+            is_rtl = font_config.get("rtl", False)
+            if is_rtl:
+                # Add note about RTL limitations                
                 c.setFont("Helvetica", 9)
-                c.drawString(50, height - 45, rtl_note)
-                y = height - 65  # Start content lower due to multiple notes
+                c.drawString(50, height - 45, "Note: PDF generated with left-to-right layout for Arabic text.")
+                c.drawString(50, height - 60, "For best results, consider using audio output.")
+                y = height - 80  # Start content lower due to multiple notes
+                
+                # Simple RTL simulation - reversing each line
+                # This is not perfect but helps visualize the text better than nothing
+                # Note: Proper RTL would require specialized RTL-aware libraries
+                text_lines = text.split('\n')
+                reversed_lines = []
+                for line in text_lines:
+                    # Reverse the line for RTL display
+                    # This is a simple approach and won't handle complex bidirectional text properly
+                    reversed_lines.append(' '.join(reversed(line.split())))
+                text = '\n'.join(reversed_lines)
             else:
                 y = height - 50  # Reset to default starting position
         
@@ -270,6 +309,7 @@ def create_translated_pdf(text, output_path, language_code='en'):
                         except Exception as e:
                             # If drawing fails, try to represent characters as best as possible
                             logger.warning(f"Error drawing text: {e}, attempting fallback")
+                            # Replace non-Latin characters with a question mark
                             safe_text = ''.join([c if ord(c) < 128 else '?' for c in ' '.join(current_line)])
                             c.drawString(50, y, safe_text)
                         y -= 20
@@ -289,6 +329,13 @@ def create_translated_pdf(text, output_path, language_code='en'):
                     safe_text = ''.join([c if ord(c) < 128 else '?' for c in ' '.join(current_line)])
                     c.drawString(50, y, safe_text)
                 y -= 20
+        
+        # Add a footer explaining PDF limitations
+        y = 30
+        c.setFont("Helvetica", 8)
+        c.drawString(50, y, "Note: This PDF is machine-translated and may contain errors.")
+        y -= 12
+        c.drawString(50, y, "For the best experience with non-Latin languages, please use the audio output.")
         
         c.save()
         return output_path

@@ -24,6 +24,17 @@ class User(UserMixin, db.Model):
     credits = Column(Integer, default=5)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    @property
+    def is_admin(self):
+        """Check if the user is an admin based on email"""
+        # List of admin emails - you can update this list as needed
+        admin_emails = ['admin@example.com']
+        # Get admin emails from environment if available
+        if current_app and current_app.config.get('ADMIN_EMAILS'):
+            admin_emails = current_app.config.get('ADMIN_EMAILS', '').split(',')
+        
+        return self.email in admin_emails
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
