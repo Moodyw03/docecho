@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, current_app
+from flask import Flask, request, redirect, current_app, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import os
@@ -110,6 +110,10 @@ def create_app():
     @app.teardown_appcontext
     def shutdown_session(exception=None):
         db.session.remove()
+
+    @app.route('/download/<path:filename>')
+    def download_file(filename):
+        return send_from_directory(app.config.get('OUTPUT_FOLDER', '.'), filename, as_attachment=True)
 
     return app
 
