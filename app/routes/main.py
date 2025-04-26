@@ -70,7 +70,7 @@ def process_file():
             
             voice = request.form.get("voice", "en")
             output_format = request.form.get("output_format", "audio")
-            speed = float(request.form.get("speed", "1.0"))
+            audio_speed = float(request.form.get("audio_speed", "1.0"))
             
             # Check if this language only supports audio
             lang_details = language_map.get(voice, {})
@@ -105,28 +105,15 @@ def process_file():
             # The final filename will be constructed within the task based on this dir.
 
             # Store parameters needed for processing
-            process_params = {
-                'filename': safe_filename,
-                'file_content': pdf_content,  # Pass file content instead of path
-                'voice': voice,
-                'speed': speed,
-                'output_format': output_format,
-                'output_path': final_output_dir, # Pass the configured output directory
-                'temp_path': temp_dir # Pass the configured temporary directory
-            }
-
-            # Log the parameters for debugging
-            log_params = process_params.copy()
-            log_params['file_content'] = f"<{len(pdf_content)} bytes>"  # Don't log binary content
-            current_app.logger.info(f"Enqueuing PDF processing with parameters: {json.dumps(log_params, default=str)}")
-
-            # Enqueue the task with Celery
-            # .delay() is a shortcut for .apply_async()
-            task = process_pdf.delay(**process_params)
-            task_id = task.id # Get the Celery task ID
-
-            current_app.logger.info(f"Enqueued background processing task {task_id}")
-            return jsonify({"task_id": task_id}), 202
+            process_pdf.delay(
+                file_content=pdf_content,
+                filename=safe_filename,
+                voice={'language': voice},
+                output_format=output_format,
+                user_id=user_id,
+                audio_speed=audio_speed
+            )
+            return jsonify({'status': 'processing'}), 202
             
         return jsonify({"error": "Invalid file type"}), 400
         
