@@ -467,6 +467,18 @@
     document.addEventListener("DOMContentLoaded", function() {
       console.log("DOM content loaded, initializing event listeners");
       
+      // Highlight audio-only languages in the dropdown
+      const voiceSelect = document.getElementById("voice");
+      if (voiceSelect) {
+        const audioOnlyOptions = ['ja', 'zh-CN', 'ar', 'ko'];
+        for (let i = 0; i < voiceSelect.options.length; i++) {
+          if (audioOnlyOptions.includes(voiceSelect.options[i].value)) {
+            // Apply styling to indicate audio-only
+            voiceSelect.options[i].style.color = "#e74c3c";
+          }
+        }
+      }
+      
       // File selection handler
       const pdfFileInput = document.getElementById("pdf_file");
       if (pdfFileInput) {
@@ -719,7 +731,13 @@
                                     statusMessage.textContent = 'Extracting text from PDF...';
                                     break;
                                 case 'translating_text':
-                                    statusMessage.textContent = 'Translating content to ' + getLanguageName() + '...';
+                                    const selectedLang = voiceSelect ? voiceSelect.value : '';
+                                    const isAudioOnly = ['ja', 'zh-CN', 'ar', 'ko'].includes(selectedLang);
+                                    if (isAudioOnly) {
+                                        statusMessage.textContent = 'Translating content to ' + getLanguageName() + ' for audio...';
+                                    } else {
+                                        statusMessage.textContent = 'Translating content to ' + getLanguageName() + '...';
+                                    }
                                     break;
                                 case 'generating_audio':
                                     statusMessage.textContent = 'Generating audio...';
@@ -879,7 +897,7 @@
             if (isAudioOnlyLanguage) {
                 formatNote.style.display = "block";
                 formatNote.innerHTML = "Note: PDF output is not available for " + 
-                    getLanguageName(selectedLanguage) + ". Only audio output is supported.";
+                    getLanguageName() + ". Only audio output is supported.";
                 formatNote.style.color = "#e74c3c";
             } else {
                 formatNote.style.display = "none";
