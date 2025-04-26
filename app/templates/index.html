@@ -646,8 +646,7 @@
     // Check progress function - poll periodically
     function checkProgress(taskId, outputFormat) {
         if (!taskId) {
-            toastr.error('No task ID provided. Please try again.');
-            $('#progressSection').hide();
+            console.error('No task ID provided');
             return;
         }
 
@@ -657,144 +656,156 @@
         let statusCheckCount = 0;
         
         // Update UI to show progress is being checked
-        $('#progressSection').show();
-        $('#progressBar').removeClass('d-none');
-        $('#progressStatus').text('Initializing...');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const statusMessage = document.getElementById('statusMessage');
+        
+        if (progressContainer) progressContainer.style.display = 'block';
+        if (statusMessage) statusMessage.textContent = 'Initializing...';
         
         // Function to poll the progress
         function pollProgress() {
-            $.ajax({
-                url: progressUrl,
-                type: 'GET',
-                success: function(response) {
+            fetch(progressUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    let response;
+                    if (typeof data === 'string') {
+                        response = JSON.parse(data);
+                    } else {
+                        response = data;
+                    }
+                    
                     if (response.status) {
                         let progress = response.progress || 0;
                         let status = response.status;
                         
                         // Update progress bar
-                        $('#progressBar').css('width', progress + '%').attr('aria-valuenow', progress);
+                        if (progressBarFill) {
+                            progressBarFill.style.width = progress + '%';
+                        }
                         
                         // Update status text based on the current status
-                        switch(status) {
-                            case 'initializing':
-                                $('#progressStatus').text('Initializing...');
-                                break;
-                            case 'extracting_text':
-                                $('#progressStatus').text('Extracting text from PDF...');
-                                break;
-                            case 'generating_audio':
-                                $('#progressStatus').text('Generating audio...');
-                                break;
-                            case 'combining_audio':
-                                $('#progressStatus').text('Finalizing audio file...');
-                                break;
-                            case 'completed':
-                                $('#progressStatus').text('Processing complete!');
-                                $('#progressBar').css('width', '100%').addClass('bg-success');
-                                clearInterval(pollInterval);
-                                
-                                // Show download button directly
-                                const downloadUrl = '/download/' + taskId + '?type=' + outputFormat;
-                                console.log('Redirecting to direct download: ' + downloadUrl);
-                                
-                                // Add direct download button
-                                $('#downloadSection').html(
-                                    '<div class="alert alert-success mt-3">' +
-                                    '<h4>Processing complete!</h4>' +
-                                    '<p>Your file is ready for download.</p>' +
-                                    '<a href="' + downloadUrl + '" class="btn btn-primary" target="_blank">' +
-                                    '<i class="fas fa-download"></i> Download ' + outputFormat.toUpperCase() + ' File</a>' +
-                                    '<a href="/status/' + taskId + '" class="btn btn-secondary ml-2" target="_blank">' +
-                                    '<i class="fas fa-eye"></i> View Status</a>' +
-                                    '</div>'
-                                );
-                                $('#downloadSection').show();
-                                return;
-                            case 'error':
-                                $('#progressStatus').text('Error occurred during processing');
-                                $('#progressBar').addClass('bg-danger');
-                                clearInterval(pollInterval);
-                                
-                                // Show error message
-                                $('#downloadSection').html(
-                                    '<div class="alert alert-danger mt-3">' + 
-                                    '<h4>Processing Error</h4>' + 
-                                    '<p>' + (response.error || 'An unknown error occurred during processing.') + '</p>' + 
-                                    '<p>Please try again or contact support if the issue persists.</p>' + 
-                                    '</div>'
-                                );
-                                $('#downloadSection').show();
-                                return;
-                            default:
-                                $('#progressStatus').text(`Status: ${status}`);
+                        if (statusMessage) {
+                            switch(status) {
+                                case 'initializing':
+                                    statusMessage.textContent = 'Initializing...';
+                                    break;
+                                case 'extracting_text':
+                                    statusMessage.textContent = 'Extracting text from PDF...';
+                                    break;
+                                case 'generating_audio':
+                                    statusMessage.textContent = 'Generating audio...';
+                                    break;
+                                case 'combining_audio':
+                                    statusMessage.textContent = 'Finalizing audio file...';
+                                    break;
+                                case 'completed':
+                                    statusMessage.textContent = 'Processing complete!';
+                                    if (progressBarFill) {
+                                        progressBarFill.style.width = '100%';
+                                        progressBarFill.classList.add('bg-success');
+                                    }
+                                    clearInterval(pollInterval);
+                                    
+                                    // Direct user to download
+                                    const downloadUrl = '/download/' + taskId + '/' + outputFormat;
+                                    console.log('File ready at: ' + downloadUrl);
+
+                                    // Create download button
+                                    const downloadBtn = document.createElement('a');
+                                    downloadBtn.href = downloadUrl;
+                                    downloadBtn.className = 'btn';
+                                    downloadBtn.textContent = 'Download ' + outputFormat.toUpperCase();
+                                    downloadBtn.target = '_blank';
+                                    
+                                    // Add download button to the page
+                                    if (progressContainer && progressContainer.parentNode) {
+                                        const downloadDiv = document.createElement('div');
+                                        downloadDiv.className = 'download-btn';
+                                        downloadDiv.style.marginTop = '15px';
+                                        downloadDiv.style.textAlign = 'center';
+                                        downloadDiv.appendChild(downloadBtn);
+                                        progressContainer.parentNode.insertBefore(downloadDiv, progressContainer.nextSibling);
+                                    }
+                                    return;
+                                case 'error':
+                                    statusMessage.textContent = 'Error: ' + (response.error || 'An unknown error occurred');
+                                    if (progressBarFill) {
+                                        progressBarFill.classList.add('bg-danger');
+                                    }
+                                    clearInterval(pollInterval);
+                                    return;
+                                default:
+                                    statusMessage.textContent = 'Status: ' + status;
+                            }
                         }
                         
                         // If we're still processing, keep checking
                         if (status !== 'completed' && status !== 'error') {
                             statusCheckCount++;
                             
-                            // If taking too long, show a message
-                            if (statusCheckCount > 30) { // After ~30 seconds
-                                $('#timeoutMessage').removeClass('d-none').html(`
-                                    <div class="alert alert-info">
-                                        <p><strong>This is taking longer than expected.</strong></p>
-                                        <p>Large files may take several minutes to process. You can wait or check back later using this link:</p>
-                                        <a href="/status/${taskId}" class="btn btn-sm btn-outline-primary" target="_blank">
-                                            <i class="fas fa-external-link-alt"></i> Task Status
-                                        </a>
-                                        <a href="${downloadUrl}" class="btn btn-sm btn-outline-success ml-2" target="_blank">
-                                            <i class="fas fa-download"></i> Try Direct Download
-                                        </a>
-                                    </div>
-                                `);
+                            // Add timeout warning after 30 seconds
+                            if (statusCheckCount > 15 && statusMessage) {
+                                const timeoutWarning = document.createElement('div');
+                                timeoutWarning.style.color = '#e67e22';
+                                timeoutWarning.style.marginTop = '10px';
+                                timeoutWarning.innerHTML = 'This is taking longer than expected. Large files may take several minutes to process.';
+                                
+                                if (!document.getElementById('timeout-warning') && statusMessage.parentNode) {
+                                    timeoutWarning.id = 'timeout-warning';
+                                    statusMessage.parentNode.appendChild(timeoutWarning);
+                                }
                             }
                         }
                     } else {
                         // Handle case where we get a response but no status
                         statusCheckCount++;
-                        if (statusCheckCount > 5) {
+                        if (statusCheckCount > 5 && statusMessage) {
+                            statusMessage.textContent = 'Could not retrieve task status';
                             clearInterval(pollInterval);
-                            $('#progressStatus').text('Could not retrieve task status');
-                            $('#progressBar').addClass('bg-warning');
                             
-                            // Provide a direct link to try download anyway
-                            $('#downloadSection').html(`
-                                <div class="alert alert-warning mt-3">
-                                    <h4>Status Unavailable</h4>
-                                    <p>We could not retrieve the status of your task, but you can try downloading directly:</p>
-                                    <a href="/download/${taskId}?type=${outputFormat}" class="btn btn-primary" target="_blank">
-                                        <i class="fas fa-download"></i> Try Download
-                                    </a>
-                                </div>
-                            `);
-                            $('#downloadSection').show();
+                            // Create a direct download link as fallback
+                            const downloadUrl = '/download/' + taskId + '/' + outputFormat;
+                            const fallbackLink = document.createElement('a');
+                            fallbackLink.href = downloadUrl;
+                            fallbackLink.textContent = 'Try direct download';
+                            fallbackLink.target = '_blank';
+                            fallbackLink.style.display = 'block';
+                            fallbackLink.style.marginTop = '10px';
+                            
+                            if (statusMessage.parentNode) {
+                                statusMessage.parentNode.appendChild(fallbackLink);
+                            }
                         }
                     }
-                },
-                error: function(xhr, status, error) {
+                })
+                .catch(error => {
                     statusCheckCount++;
                     console.error('Error checking progress:', error);
                     
-                    // Only show error after a few attempts
-                    if (statusCheckCount > 3) {
+                    if (statusCheckCount > 3 && statusMessage) {
+                        statusMessage.textContent = 'Error checking task status';
                         clearInterval(pollInterval);
-                        $('#progressStatus').text('Error checking task status');
-                        $('#progressBar').addClass('bg-danger');
                         
-                        // Provide direct download link as fallback
-                        $('#downloadSection').html(`
-                            <div class="alert alert-warning mt-3">
-                                <h4>Error Checking Status</h4>
-                                <p>We encountered an error while checking your task status, but you can try downloading directly:</p>
-                                <a href="/download/${taskId}?type=${outputFormat}" class="btn btn-primary" target="_blank">
-                                    <i class="fas fa-download"></i> Try Download
-                                </a>
-                            </div>
-                        `);
-                        $('#downloadSection').show();
+                        // Create a direct download link as fallback
+                        const downloadUrl = '/download/' + taskId + '/' + outputFormat;
+                        const fallbackLink = document.createElement('a');
+                        fallbackLink.href = downloadUrl;
+                        fallbackLink.textContent = 'Try direct download';
+                        fallbackLink.target = '_blank';
+                        fallbackLink.style.display = 'block';
+                        fallbackLink.style.marginTop = '10px';
+                        
+                        if (statusMessage.parentNode) {
+                            statusMessage.parentNode.appendChild(fallbackLink);
+                        }
                     }
-                }
-            });
+                });
         }
         
         // Poll immediately, then every 2 seconds
