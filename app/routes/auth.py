@@ -194,7 +194,10 @@ def test_sendgrid():
 def debug_verify(email):
     user = User.query.filter_by(email=email).first()
     if user:
-        send_verification_email(user)
+        # Generate a verification token for the user
+        token = generate_verification_token(user)
+        # Now pass both user and token to the function
+        send_verification_email(user, token)
         return f"Verification email re-sent to {email}"
     return "User not found"
 
