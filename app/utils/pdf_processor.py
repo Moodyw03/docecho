@@ -459,7 +459,7 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 combined = AudioSegment.empty()
                 for audio_file in audio_files:
                     combined += AudioSegment.from_mp3(audio_file)
-                output_dir = os.path.join(app.config['UPLOAD_FOLDER'], user_id)
+                output_dir = os.path.join(app.config['UPLOAD_FOLDER'], str(user_id))
                 os.makedirs(output_dir, exist_ok=True)
                 output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.mp3')
                 combined.export(output_path, format='mp3')
