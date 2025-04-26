@@ -128,29 +128,41 @@ You can also connect directly to the PostgreSQL database:
    \c docecho
    ```
 
-3. Verify the users table exists:
-
-   ```sql
-   \dt
-   ```
-
-   This should show the users table in the public schema.
-
-4. Check if the user exists and view current credits:
+3. Check if the user exists and view current credits:
 
    ```sql
    SELECT id, email, credits FROM public.users WHERE email = 'user@example.com';
    ```
 
-   Note: Using the full schema name `public.users` is recommended to avoid ambiguity.
-
-5. Add credits to an existing user:
+4. Add credits to an existing user:
 
    ```sql
    UPDATE public.users
-   SET credits = credits + 30
+   SET credits = credits + 180
    WHERE email = 'user@example.com'
-   RETURNING id, email, credits - 30 as old_credits, credits as new_credits;
+   RETURNING id, email, credits - 180 as old_credits, credits as new_credits;
+   ```
+
+5. If the user doesn't exist, create them with initial credits:
+
+   ```sql
+   INSERT INTO public.users (
+     email,
+     password_hash,
+     subscription_tier,
+     credits,
+     email_verified,
+     created_at
+   )
+   VALUES (
+     'user@example.com',
+     'placeholder_hash_to_reset_later',
+     'free',
+     180,
+     true,
+     NOW()
+   )
+   RETURNING id, email, credits;
    ```
 
 6. After updating credits, restart the application to ensure changes are reflected:
