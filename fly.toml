@@ -11,7 +11,7 @@ primary_region = "lhr"
   # Use gunicorn settings from env vars if defined, otherwise defaults - Using hardcoded defaults now
   web = "gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 --worker-class gthread wsgi:app"
   # Run celery worker, pointing to the celery instance in celery_worker.py
-  worker = "celery -A celery_worker.celery worker --loglevel=INFO -c 2" # -c specifies concurrency (2 workers)
+  worker = "celery -A celery_worker.celery worker --loglevel=INFO -c 2 --pool=solo" # -c specifies concurrency (2 workers)
 
 [http_service]
   internal_port = 8080

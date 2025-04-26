@@ -1,12 +1,16 @@
 import os
 from celery import Celery
 from dotenv import load_dotenv
+from app import create_app
 
-# Load environment variables from .env file if present
+# Load environment variables
 load_dotenv()
 
+# Create Flask app
+flask_app = create_app()
+
 # Configure Celery
-def make_celery():
+def make_celery(app):
     # Get Redis URL from environment or use default
     broker_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
     result_backend = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
@@ -32,10 +36,17 @@ def make_celery():
         broker_connection_retry_on_startup=True,  # Retry connecting to broker on startup
     )
     
+    # Set Flask app context for tasks
+    class ContextTask(celery_app.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+    
+    celery_app.Task = ContextTask
     return celery_app
 
 # Create the Celery app
-celery = make_celery()
+celery = make_celery(flask_app)
 
 # This allows for direct invocation of this script (useful for development)
 if __name__ == '__main__':
