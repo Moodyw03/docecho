@@ -149,12 +149,18 @@ def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, t
                 raise Exception(f"Failed to generate audio after {max_retries} attempts: {e}")
 
         if speed != 1.0:
-            sound = AudioSegment.from_file(temp_output)
-            sound = sound.speedup(playback_speed=speed)
-            # Export to the correctly named variable
-            sound.export(temp_audio_chunk_path, format="mp3") 
-            if os.path.exists(temp_output):
-                os.remove(temp_output)
+            try:
+                sound = AudioSegment.from_file(temp_output)
+                # Use PyDub's speedup method which doesn't require audioop
+                sound = sound.speedup(playback_speed=float(speed))
+                # Export to the correctly named variable
+                sound.export(temp_audio_chunk_path, format="mp3") 
+                if os.path.exists(temp_output):
+                    os.remove(temp_output)
+            except Exception as speed_err:
+                logger.error(f"Error adjusting audio speed: {speed_err}. Using original audio.")
+                # If speed adjustment fails, use the original audio
+                os.rename(temp_output, temp_audio_chunk_path)
         else:
             # Rename to the correctly named variable
             os.rename(temp_output, temp_audio_chunk_path)
@@ -466,9 +472,13 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                     audio_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                     tts.save(audio_file.name)
                     if float(audio_speed) != 1.0:
-                        sound = AudioSegment.from_file(audio_file.name)
-                        sound = sound.speedup(playback_speed=float(audio_speed))
-                        sound.export(audio_file.name, format="mp3")
+                        try:
+                            sound = AudioSegment.from_file(audio_file.name)
+                            sound = sound.speedup(playback_speed=float(audio_speed))
+                            sound.export(audio_file.name, format="mp3")
+                        except Exception as speed_err:
+                            logger.error(f"Error adjusting audio speed: {speed_err}. Using original audio.")
+                            # Continue with original audio if speed adjustment fails
                     audio_files.append(audio_file.name)
                     progress = 40 + (i / len(chunks)) * 40
                     update_progress(
