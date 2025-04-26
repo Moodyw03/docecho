@@ -12,6 +12,7 @@ import copy
 # Import db globally now
 from app.extensions import db, login_manager, init_extensions
 from flask_mail import Mail
+from celery_worker import celery
 
 # Background task for cleaning up expired progress records
 def cleanup_expired_progress(app):
@@ -285,3 +286,9 @@ def register_blueprints_and_models(app):
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(main_bp) 
+
+# Create Flask app
+app = create_app()
+
+# Initialize Celery with Flask app context
+celery.conf.update(app.config) 

@@ -2,6 +2,7 @@ import redis
 import os
 import logging
 from flask import current_app, has_app_context
+import json
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ def get_redis():
     try:
         # Try to get the Redis URL from the app config first (in app context)
         if has_app_context():
-            redis_url = current_app.config.get('CELERY_BROKER_URL')
+            redis_url = current_app.config.get('REDIS_URL')
             if not redis_url:
                 redis_url = current_app.config.get('CELERY_RESULT_BACKEND')
         else:
@@ -92,3 +93,18 @@ class DummyRedisClient:
         """Set expiration on key (not implemented in dummy)"""
         logger.info(f"DummyRedis: EXPIRE {key} {seconds} (not implemented)")
         return True  # Just pretend it worked 
+
+def update_progress(task_id, status, progress=None, error=False):
+    """Update the progress of a task in Redis."""
+    redis = get_redis()
+    progress_data = {
+        'status': status,
+        'error': error
+    }
+    if progress is not None:
+        progress_data['progress'] = progress
+    redis.setex(
+        f'progress:{task_id}',
+        current_app.config.get('REDIS_TTL', 3600),
+        json.dumps(progress_data)
+    ) 
