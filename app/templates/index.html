@@ -600,7 +600,7 @@
                   console.log("Task ID received:", data.task_id);
                   statusMessage.textContent = "Processing started. Tracking progress...";
                   // Start tracking progress
-                  checkProgress(data.task_id);
+                  checkProgress(data.task_id, outputFormatSelect.value);
               } else {
                   statusMessage.textContent = "Error: No task ID received";
                   console.error("No task_id in response:", data);
@@ -643,192 +643,163 @@
       }
     }
 
-    function checkProgress(taskId) {
-        console.log("Checking progress for task: " + taskId);
-        
-        // Reset retry count when starting a new progress check
-        window.progressRetryCount = 0;
-        
-        // Show task info for debugging purposes
-        const statusMessage = document.getElementById("statusMessage");
-        if (statusMessage) {
-            statusMessage.innerHTML = "Processing started. Task ID: <span style=\"font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 3px;\">" + taskId + "</span>";
+    // Check progress function - poll periodically
+    function checkProgress(taskId, outputFormat) {
+        if (!taskId) {
+            toastr.error('No task ID provided. Please try again.');
+            $('#progressSection').hide();
+            return;
         }
+
+        console.log(`Checking progress for task ${taskId}, output format: ${outputFormat}`);
         
-        // Add direct links to status and downloads
-        const progressContainer = document.getElementById("progressContainer");
-        if (progressContainer) {
-            // Check if task info container already exists
-            let taskInfoContainer = document.getElementById("taskInfoContainer");
-            if (!taskInfoContainer) {
-                taskInfoContainer = document.createElement("div");
-                taskInfoContainer.id = "taskInfoContainer";
-                taskInfoContainer.style.marginTop = "0.5rem";
-                taskInfoContainer.style.textAlign = "center";
-                taskInfoContainer.style.fontSize = "0.8rem";
-                taskInfoContainer.style.color = "#666";
-                progressContainer.appendChild(taskInfoContainer);
-            }
-            
-            taskInfoContainer.innerHTML = 
-                '<div style="margin-top: 5px;">' +
-                '<a href="/progress/' + taskId + '" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">View Status</a>' +
-                '<a href="/downloads/' + taskId + '" target="_blank" style="color: #10a37f; text-decoration: underline; margin: 0 5px;">Downloads Page</a>' +
-                '</div>';
-        }
+        let progressUrl = `/api/progress/${taskId}`;
+        let statusCheckCount = 0;
         
-        // Start progress checking
-        pollProgress(taskId);
-    }
-    
-    function pollProgress(taskId) {
-        console.log("Polling progress for task: " + taskId + ", attempt: " + ((window.progressRetryCount || 0) + 1));
+        // Update UI to show progress is being checked
+        $('#progressSection').show();
+        $('#progressBar').removeClass('d-none');
+        $('#progressStatus').text('Initializing...');
         
-        fetch("/progress/" + taskId)
-            .then(function(response) {
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        throw new Error('Task not found in database. The server may be restarting or the task was deleted.');
-                    }
-                    return response.json().then(function(data) {
-                        throw new Error(data.error || "Server error: " + response.status);
-                    });
-                }
-                return response.text().then(function(text) {
-                    console.log("Progress response text:", text);
-                    try {
-                        return JSON.parse(text);
-                    } catch (e) {
-                        console.error("Error parsing progress JSON:", e);
-                        throw new Error("Invalid progress data format");
-                    }
-                });
-            })
-            .then(function(data) {
-                console.log("Progress data:", data);
-                
-                // Handle case where we might get just a task_id (API compatibility issue)
-                if (data && data.task_id && Object.keys(data).length === 1) {
-                    console.log("Got only task_id in response. Redirecting to downloads page.");
-                    window.location.href = "/downloads/" + taskId;
-                    return;
-                }
-                
-                // Update progress bar
-                const progressBar = document.getElementById("progressBar");
-                const progressBarFill = document.getElementById("progressBarFill");
-                const statusMessage = document.getElementById("statusMessage");
-                
-                if (progressBar && progressBarFill && statusMessage) {
-                    progressBar.style.display = "block";
-                    progressBarFill.style.width = (data.progress || 0) + "%";
-                    statusMessage.textContent = data.status || "Processing...";
-                    
-                    // Check if processing is complete
-                    if (data.status === "Completed" || data.progress >= 100) {
-                        console.log("Processing complete!");
+        // Function to poll the progress
+        function pollProgress() {
+            $.ajax({
+                url: progressUrl,
+                type: 'GET',
+                success: function(response) {
+                    if (response.status) {
+                        let progress = response.progress || 0;
+                        let status = response.status;
                         
-                        // Get output format
-                        const outputFormat = document.getElementById("output_format").value;
-                        console.log("Output format:", outputFormat);
+                        // Update progress bar
+                        $('#progressBar').css('width', progress + '%').attr('aria-valuenow', progress);
                         
-                        // Check if there was a PDF failure (for "both" format)
-                        const hasPDFFailure = data.pdf_generation_failed === true;
-                        
-                        if (outputFormat === "both") {
-                            // Update the message based on whether there's a PDF failure
-                            if (hasPDFFailure) {
-                                statusMessage.textContent = "PDF generation failed, downloading audio only...";
-                            } else {
-                                statusMessage.textContent = "Processing completed! Downloading files...";
-                            }
-                            
-                            const audioTimestamp = new Date().getTime();
-                            console.log("Redirecting to:", "/download/" + taskId + "?type=audio");
-                            window.location.href = "/download/" + taskId + "?type=audio";
-                            
-                            // After a short delay, also trigger PDF download if PDF didn't fail
-                            if (!hasPDFFailure) {
-                                setTimeout(function() {
-                                    const pdfTimestamp = new Date().getTime();
-                                    console.log("Also downloading PDF:", "/download/" + taskId + "?type=pdf");
-                                    
-                                    // Create an invisible iframe for the second download instead of changing location
-                                    const downloadFrame = document.createElement('iframe');
-                                    downloadFrame.style.display = 'none';
-                                    downloadFrame.src = "/download/" + taskId + "?type=pdf";
-                                    document.body.appendChild(downloadFrame);
-                                    
-                                    // Optional: Remove the iframe after download starts
-                                    setTimeout(() => {
-                                        document.body.removeChild(downloadFrame);
-                                    }, 5000);
-                                }, 1500);
-                            }
-                        } else {
-                            // For single file formats (audio, pdf, text)
-                            console.log("Redirecting to:", "/download/" + taskId + "?type=" + outputFormat);
-                            window.location.href = "/download/" + taskId + "?type=" + outputFormat;
-                            // Change status message to indicate completion
-                            statusMessage.textContent = "Processing completed! If download doesn't start automatically, click the button below.";
+                        // Update status text based on the current status
+                        switch(status) {
+                            case 'initializing':
+                                $('#progressStatus').text('Initializing...');
+                                break;
+                            case 'extracting_text':
+                                $('#progressStatus').text('Extracting text from PDF...');
+                                break;
+                            case 'generating_audio':
+                                $('#progressStatus').text('Generating audio...');
+                                break;
+                            case 'combining_audio':
+                                $('#progressStatus').text('Finalizing audio file...');
+                                break;
+                            case 'completed':
+                                $('#progressStatus').text('Processing complete!');
+                                $('#progressBar').css('width', '100%').addClass('bg-success');
+                                clearInterval(pollInterval);
+                                
+                                // Show download button directly
+                                const downloadUrl = '/download/' + taskId + '?type=' + outputFormat;
+                                console.log('Redirecting to direct download: ' + downloadUrl);
+                                
+                                // Add direct download button
+                                $('#downloadSection').html(
+                                    '<div class="alert alert-success mt-3">' +
+                                    '<h4>Processing complete!</h4>' +
+                                    '<p>Your file is ready for download.</p>' +
+                                    '<a href="' + downloadUrl + '" class="btn btn-primary" target="_blank">' +
+                                    '<i class="fas fa-download"></i> Download ' + outputFormat.toUpperCase() + ' File</a>' +
+                                    '<a href="/status/' + taskId + '" class="btn btn-secondary ml-2" target="_blank">' +
+                                    '<i class="fas fa-eye"></i> View Status</a>' +
+                                    '</div>'
+                                );
+                                $('#downloadSection').show();
+                                return;
+                            case 'error':
+                                $('#progressStatus').text('Error occurred during processing');
+                                $('#progressBar').addClass('bg-danger');
+                                clearInterval(pollInterval);
+                                
+                                // Show error message
+                                $('#downloadSection').html(
+                                    '<div class="alert alert-danger mt-3">' + 
+                                    '<h4>Processing Error</h4>' + 
+                                    '<p>' + (response.error || 'An unknown error occurred during processing.') + '</p>' + 
+                                    '<p>Please try again or contact support if the issue persists.</p>' + 
+                                    '</div>'
+                                );
+                                $('#downloadSection').show();
+                                return;
+                            default:
+                                $('#progressStatus').text(`Status: ${status}`);
                         }
                         
-                        // Add a direct download button as fallback
-                        const progressContainer = document.getElementById("progressContainer");
-                        if (progressContainer) {
-                            let downloadContainer = document.getElementById("downloadContainer");
-                            if (!downloadContainer) {
-                                downloadContainer = document.createElement("div");
-                                downloadContainer.id = "downloadContainer";
-                                downloadContainer.style.marginTop = "1rem";
-                                downloadContainer.style.textAlign = "center";
-                                progressContainer.appendChild(downloadContainer);
-                            }
+                        // If we're still processing, keep checking
+                        if (status !== 'completed' && status !== 'error') {
+                            statusCheckCount++;
                             
-                            downloadContainer.innerHTML = 
-                                '<a href="/downloads/' + taskId + '" class="btn">Go to Downloads Page</a>';
+                            // If taking too long, show a message
+                            if (statusCheckCount > 30) { // After ~30 seconds
+                                $('#timeoutMessage').removeClass('d-none').html(`
+                                    <div class="alert alert-info">
+                                        <p><strong>This is taking longer than expected.</strong></p>
+                                        <p>Large files may take several minutes to process. You can wait or check back later using this link:</p>
+                                        <a href="/status/${taskId}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i> Task Status
+                                        </a>
+                                        <a href="${downloadUrl}" class="btn btn-sm btn-outline-success ml-2" target="_blank">
+                                            <i class="fas fa-download"></i> Try Direct Download
+                                        </a>
+                                    </div>
+                                `);
+                            }
                         }
                     } else {
-                        // Continue checking progress every 2 seconds
-                        setTimeout(function() { pollProgress(taskId); }, 2000);
-                    }
-                }
-            })
-            .catch(function(error) {
-                console.error("Error checking progress:", error);
-                var statusMessage = document.getElementById("statusMessage");
-                if (statusMessage) {
-                    statusMessage.textContent = "Error: " + error.message;
-                }
-                
-                // Retry a few times before giving up
-                window.progressRetryCount = (window.progressRetryCount || 0) + 1;
-                if (window.progressRetryCount < 5) {
-                    setTimeout(function() { pollProgress(taskId); }, 5000);
-                } else {
-                    console.log('Max retries reached, giving up');
-                    if (statusMessage) {
-                        var downloadLink = "/downloads/" + taskId;
-                        statusMessage.innerHTML = "Error tracking progress. <a href=\"" + downloadLink + "\" style=\"color:#10a37f;\">Try the downloads page</a>.";
-                    }
-                    
-                    // Add a direct download button as fallback
-                    var progressContainer = document.getElementById("progressContainer");
-                    if (progressContainer) {
-                        var downloadContainer = document.getElementById("downloadContainer");
-                        if (!downloadContainer) {
-                            downloadContainer = document.createElement("div");
-                            downloadContainer.id = "downloadContainer";
-                            downloadContainer.style.marginTop = "1rem";
-                            downloadContainer.style.textAlign = "center";
-                            progressContainer.appendChild(downloadContainer);
+                        // Handle case where we get a response but no status
+                        statusCheckCount++;
+                        if (statusCheckCount > 5) {
+                            clearInterval(pollInterval);
+                            $('#progressStatus').text('Could not retrieve task status');
+                            $('#progressBar').addClass('bg-warning');
+                            
+                            // Provide a direct link to try download anyway
+                            $('#downloadSection').html(`
+                                <div class="alert alert-warning mt-3">
+                                    <h4>Status Unavailable</h4>
+                                    <p>We could not retrieve the status of your task, but you can try downloading directly:</p>
+                                    <a href="/download/${taskId}?type=${outputFormat}" class="btn btn-primary" target="_blank">
+                                        <i class="fas fa-download"></i> Try Download
+                                    </a>
+                                </div>
+                            `);
+                            $('#downloadSection').show();
                         }
+                    }
+                },
+                error: function(xhr, status, error) {
+                    statusCheckCount++;
+                    console.error('Error checking progress:', error);
+                    
+                    // Only show error after a few attempts
+                    if (statusCheckCount > 3) {
+                        clearInterval(pollInterval);
+                        $('#progressStatus').text('Error checking task status');
+                        $('#progressBar').addClass('bg-danger');
                         
-                        downloadContainer.innerHTML = 
-                            '<a href="/downloads/' + taskId + '" class="btn">Go to Downloads Page</a>';
+                        // Provide direct download link as fallback
+                        $('#downloadSection').html(`
+                            <div class="alert alert-warning mt-3">
+                                <h4>Error Checking Status</h4>
+                                <p>We encountered an error while checking your task status, but you can try downloading directly:</p>
+                                <a href="/download/${taskId}?type=${outputFormat}" class="btn btn-primary" target="_blank">
+                                    <i class="fas fa-download"></i> Try Download
+                                </a>
+                            </div>
+                        `);
+                        $('#downloadSection').show();
                     }
                 }
             });
+        }
+        
+        // Poll immediately, then every 2 seconds
+        pollProgress();
+        const pollInterval = setInterval(pollProgress, 2000);
     }
 
     // Add this function to handle language-based restrictions
