@@ -466,6 +466,21 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 for audio_file in audio_files:
                     os.unlink(audio_file)
                 os.unlink(temp_file_path)
+                
+                # Save the output files to Redis for download
+                if output_format == 'audio' or output_format == 'both':
+                    save_file_to_redis(output_path, process_pdf.request.id, 'audio')
+                
+                # Handle PDF output if requested
+                if output_format == 'pdf' or output_format == 'both':
+                    pdf_output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.pdf')
+                    try:
+                        create_translated_pdf(text, pdf_output_path, voice.get('language', 'en'))
+                        save_file_to_redis(pdf_output_path, process_pdf.request.id, 'pdf')
+                    except Exception as e:
+                        logger.error(f"Error creating PDF: {str(e)}")
+                        # Continue execution even if PDF fails
+                
                 update_progress(
                     task_id=process_pdf.request.id,
                     status='completed',
