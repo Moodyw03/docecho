@@ -429,15 +429,40 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                     pdf_reader = PdfReader(file)
                     for page in pdf_reader.pages:
                         text += page.extract_text()
+                
+                # Add translation step here
+                update_progress(
+                    task_id=process_pdf.request.id,
+                    status='translating_text',
+                    progress=30
+                )
+                
+                # Only translate if the language is not English
+                language_code = voice['language']
+                translated_text = text
+                
+                if language_code != 'en':
+                    try:
+                        translator = Translator()
+                        translated_text, error = translate_with_timeout(translator, text, dest=language_code, timeout=60)
+                        if error:
+                            logger.warning(f"Translation error: {error}. Using original text.")
+                            translated_text = text
+                    except Exception as e:
+                        logger.error(f"Error during translation: {str(e)}")
+                        translated_text = text  # Fallback to original text
+                
                 update_progress(
                     task_id=process_pdf.request.id,
                     status='generating_audio',
                     progress=40
                 )
-                chunks = [text[i:i+5000] for i in range(0, len(text), 5000)]
+                
+                # Use the translated text for audio generation
+                chunks = [translated_text[i:i+5000] for i in range(0, len(translated_text), 5000)]
                 audio_files = []
                 for i, chunk in enumerate(chunks):
-                    tts = gTTS(text=chunk, lang=voice['language'])
+                    tts = gTTS(text=chunk, lang=language_code)
                     audio_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                     tts.save(audio_file.name)
                     if float(audio_speed) != 1.0:
@@ -475,7 +500,8 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 if output_format == 'pdf' or output_format == 'both':
                     pdf_output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.pdf')
                     try:
-                        create_translated_pdf(text, pdf_output_path, voice.get('language', 'en'))
+                        # Use translated text for PDF creation
+                        create_translated_pdf(translated_text, pdf_output_path, language_code)
                         save_file_to_redis(pdf_output_path, process_pdf.request.id, 'pdf')
                     except Exception as e:
                         logger.error(f"Error creating PDF: {str(e)}")
