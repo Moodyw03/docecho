@@ -412,18 +412,19 @@
           <option value="fr">French</option>
           <option value="de">German</option>
           <option value="it">Italian</option>
-          <option value="zh-CN">Chinese (Mandarin)</option>
-          <option value="ja">Japanese</option>
           <option value="ru">Russian</option>
-          <option value="ar">Arabic</option>
-          <option value="hi">Hindi</option>
-          <option value="ko">Korean</option>
           <option value="tr">Turkish</option>
           <option value="nl">Dutch</option>
           <option value="pl">Polish</option>
+          <option value="ja">Japanese (Audio Only)</option>
+          <option value="zh-CN">Chinese (Audio Only)</option>
+          <option value="ar">Arabic (Audio Only)</option>
+          <option value="ko">Korean (Audio Only)</option>
         </select>
         <div id="font-warning" style="display: none; color: #e67e22; font-size: 0.8rem; margin-top: 0.3rem; padding: 0.3rem; background: rgba(230, 126, 34, 0.1); border-radius: 5px;">
           Note: This language may have font rendering issues in PDF output. Audio should work correctly.
+        </div>
+        <div id="formatNote" style="display: none; color: #e74c3c; font-size: 0.8rem; margin-top: 0.3rem; padding: 0.3rem; background: rgba(231, 76, 60, 0.1); border-radius: 5px;">
         </div>
       </div>
 
@@ -485,7 +486,7 @@
       const fontWarning = document.getElementById("font-warning");
       
       // Languages with potential font rendering issues
-      const problematicFontLanguages = ["zh-CN", "ja", "ar", "hi", "ko"];
+      const problematicFontLanguages = [];
       
       // Show or hide font warning based on selected language
       function updateFontWarning() {
@@ -616,8 +617,7 @@
       // Initialize button text
       updateButtonText();
       
-      // Voice select change handler
-      const voiceSelect = document.getElementById("voice");
+      // Using the voiceSelect variable declared above
       if (voiceSelect) {
         voiceSelect.addEventListener("change", updateOutputOptions);
         updateOutputOptions();
@@ -833,7 +833,7 @@
 
     // Add this function to handle language-based restrictions
     function updateOutputOptions() {
-        const voiceSelect = document.getElementById("voice");
+        const voiceSelect = document.getElementById("voice"); // Get the voice select element
         const outputFormat = document.getElementById("output_format");
         const formatNote = document.getElementById("formatNote");
         
@@ -842,45 +842,56 @@
             return;
         }
         
-        const selectedVoice = voiceSelect.value;
-        // Get problematic languages from the server configuration
-        // These are the languages that have font rendering issues with PDF
-        const problematicLanguages = ['ja', 'zh-CN', 'ar', 'hi', 'ko'];
+        // Get the selected language
+        const selectedLanguage = voiceSelect.value;
         
-        if (problematicLanguages.includes(selectedVoice)) {
-            // Force audio-only for problematic languages
-            outputFormat.value = 'audio';
-            outputFormat.disabled = true;
-            // Add or update a format note to inform the user
-            let noteElem = document.getElementById("formatNote");
-            if (!noteElem) {
-                noteElem = document.createElement("div");
-                noteElem.id = "formatNote";
-                noteElem.style.color = "#e67e22";
-                noteElem.style.fontSize = "0.8rem";
-                noteElem.style.marginTop = "0.3rem";
-                noteElem.style.padding = "0.3rem";
-                noteElem.style.background = "rgba(230, 126, 34, 0.1)";
-                noteElem.style.borderRadius = "5px";
-                outputFormat.parentNode.appendChild(noteElem);
+        // Define languages that only support audio (no PDF)
+        const audioOnlyLanguages = ['ja', 'zh-CN', 'ar', 'ko'];
+        const isAudioOnlyLanguage = audioOnlyLanguages.includes(selectedLanguage);
+        
+        // Enable/disable output format options based on language
+        for (let i = 0; i < outputFormat.options.length; i++) {
+            const option = outputFormat.options[i];
+            const value = option.value;
+            
+            if (isAudioOnlyLanguage && (value === 'pdf' || value === 'both')) {
+                option.disabled = true;
+            } else {
+                option.disabled = false;
             }
-            noteElem.style.display = "block";
-            noteElem.textContent = "This language is only available in audio format due to font rendering limitations.";
-        } else {
-            outputFormat.disabled = false;
-            if (formatNote) {
+        }
+        
+        // If current selection is invalid for this language, reset to audio
+        if (isAudioOnlyLanguage && (outputFormat.value === 'pdf' || outputFormat.value === 'both')) {
+            outputFormat.value = 'audio';
+            // Call updateButtonText to refresh the button label
+            if (typeof updateButtonText === 'function') {
+                updateButtonText();
+            }
+        }
+        
+        // Show/hide format notes
+        if (formatNote) {
+            if (isAudioOnlyLanguage) {
+                formatNote.style.display = "block";
+                formatNote.innerHTML = "Note: PDF output is not available for " + 
+                    getLanguageName(selectedLanguage) + ". Only audio output is supported.";
+                formatNote.style.color = "#e74c3c";
+            } else {
                 formatNote.style.display = "none";
             }
-            // Also check for any existing format note element
-            const noteElem = document.getElementById("formatNote");
-            if (noteElem) {
-                noteElem.style.display = "none";
-            }
         }
-        
-        if (typeof updateButtonText === 'function') {
-            updateButtonText();
-        }
+    }
+    
+    // Helper function to get language name from code
+    function getLanguageName(code) {
+        const languages = {
+            'ja': 'Japanese',
+            'zh-CN': 'Chinese',
+            'ar': 'Arabic',
+            'ko': 'Korean'
+        };
+        return languages[code] || code;
     }
   </script>
 {% endblock %}

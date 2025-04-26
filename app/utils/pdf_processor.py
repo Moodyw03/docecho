@@ -28,6 +28,36 @@ from app.utils.redis import get_redis
 # Add logger instance
 logger = logging.getLogger(__name__)
 
+# Simple rate limiter for Google Translate API
+class TranslateRateLimiter:
+    def __init__(self, max_requests_per_minute=60):
+        self.max_requests = max_requests_per_minute
+        self.request_timestamps = []
+        self.lock = threading.Lock()
+    
+    def wait_if_needed(self):
+        with self.lock:
+            now = time.time()
+            # Remove timestamps older than 60 seconds
+            self.request_timestamps = [t for t in self.request_timestamps if now - t < 60]
+            
+            # If we've made too many requests recently, wait
+            if len(self.request_timestamps) >= self.max_requests:
+                # Calculate wait time based on oldest request
+                wait_time = 60 - (now - self.request_timestamps[0])
+                if wait_time > 0:
+                    logger.warning(f"Rate limit reached, waiting for {wait_time:.2f} seconds")
+                    time.sleep(wait_time)
+                    # After waiting, update now and clean timestamps again
+                    now = time.time()
+                    self.request_timestamps = [t for t in self.request_timestamps if now - t < 60]
+            
+            # Record this request
+            self.request_timestamps.append(now)
+
+# Create a global rate limiter
+translate_rate_limiter = TranslateRateLimiter()
+
 # Mapping language codes and TLDs for accents
 language_map = {
     "en": {"lang": "en", "tld": "com"},
@@ -37,15 +67,14 @@ language_map = {
     "fr": {"lang": "fr", "tld": "fr"},
     "de": {"lang": "de", "tld": "de"},
     "it": {"lang": "it", "tld": "it"},
-    "zh-CN": {"lang": "zh-CN", "tld": "com", "problematic": True},
-    "ja": {"lang": "ja", "tld": "co.jp", "problematic": True},
     "ru": {"lang": "ru", "tld": "ru"},
-    "ar": {"lang": "ar", "tld": "com.sa", "problematic": True},    # Arabic
-    "hi": {"lang": "hi", "tld": "co.in", "problematic": True},     # Hindi
-    "ko": {"lang": "ko", "tld": "co.kr", "problematic": True},     # Korean
     "tr": {"lang": "tr", "tld": "com.tr"},    # Turkish
     "nl": {"lang": "nl", "tld": "nl"},        # Dutch
-    "pl": {"lang": "pl", "tld": "pl"}         # Polish
+    "pl": {"lang": "pl", "tld": "pl"},         # Polish
+    "ja": {"lang": "ja", "tld": "co.jp", "audio_only": True},  # Japanese
+    "zh-CN": {"lang": "zh-CN", "tld": "com", "audio_only": True},  # Chinese (Simplified)
+    "ar": {"lang": "ar", "tld": "com", "audio_only": True},    # Arabic 
+    "ko": {"lang": "ko", "tld": "co.kr", "audio_only": True}   # Korean
 }
 
 # Smaller chunk size for better processing
@@ -102,6 +131,9 @@ def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, t
         # Translate the text to the target language first
         translator = Translator()
         try:
+            # Apply rate limiting before translation
+            translate_rate_limiter.wait_if_needed()
+            
             translated_text, error = translate_with_timeout(translator, text, dest=voice, timeout=30)
             if error:
                 logger.warning(f"Translation failed, using original text: {error}")
@@ -212,37 +244,7 @@ def create_translated_pdf(text, output_path, language_code='en'):
         
         # Languages that need special font handling
         complex_script_languages = {
-            "zh-CN": {
-                "needs_special_font": True, 
-                "font_family": "SimSun", 
-                "fallback": "Helvetica",
-                "message": "Chinese characters may not render correctly due to font limitations."
-            },
-            "ja": {
-                "needs_special_font": True, 
-                "font_family": "HeiseiMin-W3", 
-                "fallback": "Helvetica",
-                "message": "Japanese characters may not render correctly due to font limitations."
-            },
-            "ko": {
-                "needs_special_font": True, 
-                "font_family": "Malgun Gothic", 
-                "fallback": "Helvetica",
-                "message": "Korean characters may not render correctly due to font limitations."
-            },
-            "ar": {
-                "needs_special_font": True, 
-                "font_family": "Arial Unicode MS", 
-                "fallback": "Helvetica", 
-                "rtl": True,
-                "message": "Arabic text requires right-to-left rendering which is not fully supported. Characters may appear in reverse order."
-            },
-            "hi": {
-                "needs_special_font": True, 
-                "font_family": "Arial Unicode MS", 
-                "fallback": "Helvetica",
-                "message": "Hindi/Devanagari script may not render correctly due to font limitations."
-            }
+            # Empty dictionary since we've removed all complex script languages
         }
         
         # Check if language needs special handling
@@ -351,7 +353,16 @@ def translate_with_timeout(translator, text, dest, timeout=10):
     def translate_task():
         nonlocal result, error
         try:
+            # Wait if we're about to hit rate limits
+            translate_rate_limiter.wait_if_needed()
+            
+            # Now make the translation request
             result = translator.translate(text, dest=dest).text
+        except AttributeError as e:
+            if "'NoneType' object has no attribute 'group'" in str(e):
+                error = Exception("Translation API error: token retrieval failed. This may be due to an API rate limit or a change in the translation service. Please try again later or contact support if the issue persists.")
+            else:
+                error = e
         except Exception as e:
             error = e
     
@@ -418,6 +429,14 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         logger.info(f"[{task_id}] Starting PDF processing for: {filename}")
         logger.info(f"[{task_id}] Output base path: {output_path}")
         
+        # Get language details
+        lang_details = language_map.get(voice, {"lang": voice, "tld": "com"})
+        
+        # Override output format if this language only supports audio
+        if lang_details.get("audio_only", False) and output_format in ["pdf", "both"]:
+            logger.info(f"[{task_id}] Language {voice} only supports audio output. Overriding format {output_format} to 'audio'")
+            output_format = "audio"
+        
         # Create a unique temp directory for this task using the task_id
         task_temp_path = os.path.join(temp_path, task_id)
         logger.info(f"[{task_id}] Task-specific temp path: {task_temp_path}")
@@ -461,7 +480,6 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
         logger.info(f"[{task_id}] Using {max_workers} workers for audio conversion.")
 
         # Pass the correct tld based on the voice
-        lang_details = language_map.get(voice, {"lang": voice, "tld": "com"})
         tld = lang_details['tld']
         lang_code = lang_details['lang'] # Use this for gTTS lang parameter
 
@@ -535,7 +553,22 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
                 # Use the language code extracted from the map
                 translated_text, error = translate_with_timeout(translator, full_text, dest=lang_code, timeout=180) # Increased timeout
                 if error:
-                    raise Exception(f"Translation failed: {error}")
+                    logger.warning(f"[{task_id}] Primary translation method failed: {error}")
+                    logger.info(f"[{task_id}] Attempting fallback translation approach...")
+                    
+                    # Fallback approach - try with a fresh translator instance
+                    try:
+                        # Create a new translator instance
+                        backup_translator = Translator()
+                        translated_text, error = translate_with_timeout(backup_translator, full_text, dest=lang_code, timeout=180)
+                        if error or not translated_text:
+                            raise Exception(f"Fallback translation also failed: {error if error else 'Empty result'}")
+                        logger.info(f"[{task_id}] Fallback translation successful!")
+                    except Exception as fallback_error:
+                        # If fallback also fails, raise the original error
+                        logger.error(f"[{task_id}] Fallback translation failed: {fallback_error}")
+                        raise Exception(f"Translation failed: {error}")
+                
                 if not translated_text:
                     raise Exception("Translation returned empty result.")
 
@@ -566,7 +599,22 @@ def process_pdf(self, filename, file_content, voice, speed, output_format, outpu
                 update_progress(task_id, status='Translating text...', progress=85)
                 translated_text, error = translate_with_timeout(translator, full_text, dest=lang_code, timeout=180)
                 if error:
-                    raise Exception(f"Translation failed: {error}")
+                    logger.warning(f"[{task_id}] Primary translation method failed: {error}")
+                    logger.info(f"[{task_id}] Attempting fallback translation approach...")
+                    
+                    # Fallback approach - try with a fresh translator instance
+                    try:
+                        # Create a new translator instance
+                        backup_translator = Translator()
+                        translated_text, error = translate_with_timeout(backup_translator, full_text, dest=lang_code, timeout=180)
+                        if error or not translated_text:
+                            raise Exception(f"Fallback translation also failed: {error if error else 'Empty result'}")
+                        logger.info(f"[{task_id}] Fallback translation successful!")
+                    except Exception as fallback_error:
+                        # If fallback also fails, raise the original error
+                        logger.error(f"[{task_id}] Fallback translation failed: {fallback_error}")
+                        raise Exception(f"Translation failed: {error}")
+                
                 if not translated_text:
                     raise Exception("Translation returned empty result.")
                 

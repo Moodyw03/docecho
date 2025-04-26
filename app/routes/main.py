@@ -72,13 +72,10 @@ def process_file():
             output_format = request.form.get("output_format", "audio")
             speed = float(request.form.get("speed", "1.0"))
             
-            # Get the language map to check for problematic languages
-            language_info = language_map.get(voice, {})
-            is_problematic = language_info.get('problematic', False)
-            
-            # Force audio-only for problematic languages
-            if is_problematic and output_format in ["pdf", "both"]:
-                current_app.logger.warning(f"Language {voice} is problematic for PDF output. Forcing to audio-only.")
+            # Check if this language only supports audio
+            lang_details = language_map.get(voice, {})
+            if lang_details.get("audio_only", False) and output_format in ["pdf", "both"]:
+                current_app.logger.info(f"Language {voice} only supports audio output. Overriding format {output_format} to 'audio'")
                 output_format = "audio"
             
             # Calculate required credits
@@ -640,21 +637,37 @@ def test_pdf_rendering(language_code):
         
         # Sample text for testing
         sample_texts = {
-            'ar': """مرحبا بكم في تطبيق DocEcho.
-هذا النص هو مثال على كيفية عرض اللغة العربية.
-نأمل أن يتم عرض النص بشكل صحيح.""",
-            'hi': """DocEcho ऐप में आपका स्वागत है।
-यह टेक्स्ट हिंदी भाषा के प्रदर्शन का एक उदाहरण है।
-हम आशा करते हैं कि टेक्स्ट सही ढंग से दिखाया जाएगा।""",
-            'ko': """DocEcho 앱에 오신 것을 환영합니다.
-이 텍스트는 한국어가 어떻게 표시되는지에 대한 예시입니다.
-텍스트가 올바르게 표시되기를 바랍니다.""",
-            'zh-CN': """欢迎使用 DocEcho 应用程序。
-这段文字是展示中文的示例。
-我们希望文字能够正确显示。""",
-            'ja': """DocEchoアプリへようこそ。
-このテキストは日本語の表示例です。
-テキストが正しく表示されることを願っています。"""
+            # Only including supported languages
+            'en': """Welcome to the DocEcho app.
+This text is an example of how English is displayed.
+We hope the text is displayed correctly.""",
+            'fr': """Bienvenue dans l'application DocEcho.
+Ce texte est un exemple de la façon dont le français est affiché.
+Nous espérons que le texte s'affiche correctement.""",
+            'es': """Bienvenido a la aplicación DocEcho.
+Este texto es un ejemplo de cómo se muestra el español.
+Esperamos que el texto se muestre correctamente.""",
+            'de': """Willkommen bei der DocEcho-App.
+Dieser Text ist ein Beispiel dafür, wie Deutsch angezeigt wird.
+Wir hoffen, dass der Text korrekt angezeigt wird.""",
+            'it': """Benvenuti nell'app DocEcho.
+Questo testo è un esempio di come viene visualizzato l'italiano.
+Speriamo che il testo venga visualizzato correttamente.""",
+            'pt': """Bem-vindo ao aplicativo DocEcho.
+Este texto é um exemplo de como o português é exibido.
+Esperamos que o texto seja exibido corretamente.""",
+            'ru': """Добро пожаловать в приложение DocEcho.
+Этот текст является примером того, как отображается русский язык.
+Мы надеемся, что текст отображается правильно.""",
+            'nl': """Welkom bij de DocEcho-app.
+Deze tekst is een voorbeeld van hoe Nederlands wordt weergegeven.
+We hopen dat de tekst correct wordt weergegeven.""",
+            'pl': """Witamy w aplikacji DocEcho.
+Ten tekst jest przykładem wyświetlania języka polskiego.
+Mamy nadzieję, że tekst jest wyświetlany poprawnie.""",
+            'tr': """DocEcho uygulamasına hoş geldiniz.
+Bu metin, Türkçe'nin nasıl görüntülendiğine dair bir örnektir.
+Metnin doğru şekilde görüntülenmesini umuyoruz."""
         }
         
         # Default text if language not in sample list
