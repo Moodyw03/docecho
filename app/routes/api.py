@@ -23,6 +23,7 @@ def process_file():
         voice = request.form.get('voice', 'en')
         output_format = request.form.get('output_format', 'audio')
         user_id = request.form.get('user_id')
+        audio_speed = float(request.form.get('audio_speed', 1.0))
         
         if not user_id:
             return jsonify({'error': 'User ID is required'}), 400
@@ -36,7 +37,8 @@ def process_file():
             filename=file.filename,
             voice={'language': voice},
             output_format=output_format,
-            user_id=user_id
+            user_id=user_id,
+            audio_speed=audio_speed
         )
         
         return jsonify({

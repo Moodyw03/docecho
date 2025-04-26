@@ -438,9 +438,9 @@
       </div>
 
       <div class="options">
-        <label for="speed">Speed</label>
-        <input type="range" name="speed" id="speed" min="0.5" max="2.0" step="0.1" value="1.0" />
-        <div class="speed-value" id="speedValue">1.0x</div>
+        <label for="audio_speed">Audio Speed</label>
+        <input type="range" name="audio_speed" id="audio_speed" min="0.5" max="2.0" step="0.1" value="1.0" />
+        <div class="speed-value" id="audioSpeedValue">1.0x</div>
       </div>
 
       <button type="submit" class="btn">Convert to Audio</button>
@@ -467,11 +467,11 @@
         });
       }
       
-      // Speed slider handler
-      const speedSlider = document.getElementById("speed");
-      if (speedSlider) {
-        speedSlider.addEventListener("input", function() {
-          document.getElementById("speedValue").textContent = this.value + "x";
+      // Audio speed slider handler
+      const audioSpeedSlider = document.getElementById("audio_speed");
+      if (audioSpeedSlider) {
+        audioSpeedSlider.addEventListener("input", function() {
+          document.getElementById("audioSpeedValue").textContent = this.value + "x";
         });
       }
       

@@ -406,98 +406,76 @@ def save_file_to_redis(file_path, task_id, file_type):
         return False
 
 @shared_task
-def process_pdf(file_content, filename, voice, output_format, user_id):
+def process_pdf(file_content, filename, voice, output_format, user_id, audio_speed=1.0):
     """Process a PDF file and generate audio."""
     try:
-        # Create a Flask app context
         app = current_app._get_current_object()
-        
-        # Update progress
         update_progress(
             task_id=process_pdf.request.id,
             status='initializing',
             progress=0
         )
-        
-        # Save file to temporary directory
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
             temp_file.write(file_content)
             temp_file_path = temp_file.name
-        
         try:
-            # Extract text from PDF
             update_progress(
                 task_id=process_pdf.request.id,
                 status='extracting_text',
                 progress=20
             )
-            
             text = ''
             with open(temp_file_path, 'rb') as file:
                 pdf_reader = PdfReader(file)
                 for page in pdf_reader.pages:
                     text += page.extract_text()
-            
-            # Generate audio from text
             update_progress(
                 task_id=process_pdf.request.id,
                 status='generating_audio',
                 progress=40
             )
-            
-            # Split text into chunks to avoid rate limiting
             chunks = [text[i:i+5000] for i in range(0, len(text), 5000)]
             audio_files = []
-            
             for i, chunk in enumerate(chunks):
                 tts = gTTS(text=chunk, lang=voice['language'])
                 audio_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                 tts.save(audio_file.name)
+                # Apply audio speed if not 1.0
+                if float(audio_speed) != 1.0:
+                    sound = AudioSegment.from_file(audio_file.name)
+                    sound = sound.speedup(playback_speed=float(audio_speed))
+                    sound.export(audio_file.name, format="mp3")
                 audio_files.append(audio_file.name)
-                
-                # Update progress
                 progress = 40 + (i / len(chunks)) * 40
                 update_progress(
                     task_id=process_pdf.request.id,
                     status='generating_audio',
                     progress=progress
                 )
-            
-            # Combine audio files
             update_progress(
                 task_id=process_pdf.request.id,
                 status='combining_audio',
                 progress=80
             )
-            
             combined = AudioSegment.empty()
             for audio_file in audio_files:
                 combined += AudioSegment.from_mp3(audio_file)
-            
-            # Save final audio file
             output_dir = os.path.join(app.config['UPLOAD_FOLDER'], user_id)
             os.makedirs(output_dir, exist_ok=True)
-            
             output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.mp3')
             combined.export(output_path, format='mp3')
-            
-            # Clean up temporary files
             for audio_file in audio_files:
                 os.unlink(audio_file)
             os.unlink(temp_file_path)
-            
-            # Update progress
             update_progress(
                 task_id=process_pdf.request.id,
                 status='completed',
                 progress=100
             )
-            
             return {
                 'status': 'completed',
                 'output_path': output_path
             }
-            
         except Exception as e:
             logger.error(f'Error processing PDF: {str(e)}')
             update_progress(
@@ -506,7 +484,6 @@ def process_pdf(file_content, filename, voice, output_format, user_id):
                 error=True
             )
             raise
-            
     except Exception as e:
         logger.error(f'Error in process_pdf task: {str(e)}')
         update_progress(
