@@ -492,4 +492,4 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 status='error',
                 error=str(e)
             )
-            raise 
+            raise             raise
