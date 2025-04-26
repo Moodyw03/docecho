@@ -622,29 +622,36 @@
         voiceSelect.addEventListener("change", updateOutputOptions);
         updateOutputOptions();
       }
-    });
 
-    function updateButtonText() {
-      const outputFormat = document.getElementById("output_format");
-      if (!outputFormat) return;
-      
-      const button = document.querySelector(".btn");
-      if (!button) return;
-      
-      switch(outputFormat.value) {
-          case "pdf":
-              button.textContent = "Convert to PDF";
-              break;
-          case "both":
-              button.textContent = "Convert to Audio & PDF";
-              break;
-          default:
-              button.textContent = "Convert to Audio";
+      // Helper function to get language name from code
+      function getLanguageName() {
+        const voiceSelect = document.getElementById("voice");
+        if (!voiceSelect) return "selected language";
+        
+        const languageCode = voiceSelect.value;
+        const languageNames = {
+            'en': 'English',
+            'en-uk': 'British English',
+            'es': 'Spanish',
+            'fr': 'French',
+            'de': 'German',
+            'it': 'Italian',
+            'pt': 'Portuguese',
+            'ru': 'Russian',
+            'tr': 'Turkish',
+            'nl': 'Dutch',
+            'pl': 'Polish',
+            'ja': 'Japanese',
+            'zh-CN': 'Chinese',
+            'ar': 'Arabic',
+            'ko': 'Korean'
+        };
+        
+        return languageNames[languageCode] || 'selected language';
       }
-    }
-
-    // Check progress function - poll periodically
-    function checkProgress(taskId, outputFormat) {
+      
+      // Check progress function - poll periodically
+      function checkProgress(taskId, outputFormat) {
         if (!taskId) {
             console.error('No task ID provided');
             return;
@@ -701,6 +708,9 @@
                                     break;
                                 case 'extracting_text':
                                     statusMessage.textContent = 'Extracting text from PDF...';
+                                    break;
+                                case 'translating_text':
+                                    statusMessage.textContent = 'Translating content to ' + getLanguageName() + '...';
                                     break;
                                 case 'generating_audio':
                                     statusMessage.textContent = 'Generating audio...';
@@ -866,17 +876,6 @@
                 formatNote.style.display = "none";
             }
         }
-    }
-    
-    // Helper function to get language name from code
-    function getLanguageName(code) {
-        const languages = {
-            'ja': 'Japanese',
-            'zh-CN': 'Chinese',
-            'ar': 'Arabic',
-            'ko': 'Korean'
-        };
-        return languages[code] || code;
     }
   </script>
 {% endblock %}
