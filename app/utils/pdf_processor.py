@@ -488,6 +488,6 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
             update_progress(
                 task_id=process_pdf.request.id,
                 status='error',
-                error=True
+                error=str(e)
             )
             raise 
