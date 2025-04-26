@@ -469,11 +469,13 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 update_progress(
                     task_id=process_pdf.request.id,
                     status='completed',
-                    progress=100
+                    progress=100,
+                    audio_file=output_path
                 )
                 return {
                     'status': 'completed',
-                    'output_path': output_path
+                    'output_path': output_path,
+                    'audio_file': output_path
                 }
             except Exception as e:
                 logger.error(f'Error processing PDF: {str(e)}')

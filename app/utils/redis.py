@@ -94,7 +94,7 @@ class DummyRedisClient:
         logger.info(f"DummyRedis: EXPIRE {key} {seconds} (not implemented)")
         return True  # Just pretend it worked 
 
-def update_progress(task_id, status, progress=None, error=False):
+def update_progress(task_id, status, progress=None, error=False, **kwargs):
     """Update the progress of a task in Redis."""
     redis = get_redis()
     progress_data = {
@@ -103,6 +103,10 @@ def update_progress(task_id, status, progress=None, error=False):
     }
     if progress is not None:
         progress_data['progress'] = progress
+    
+    # Add any additional keyword arguments to the progress data
+    progress_data.update(kwargs)
+    
     redis.setex(
         f'progress:{task_id}',
         current_app.config.get('REDIS_TTL', 3600),
