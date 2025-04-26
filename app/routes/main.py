@@ -105,7 +105,7 @@ def process_file():
             # The final filename will be constructed within the task based on this dir.
 
             # Store parameters needed for processing
-            process_pdf.delay(
+            task = process_pdf.delay(
                 file_content=pdf_content,
                 filename=safe_filename,
                 voice={'language': voice},
@@ -113,7 +113,7 @@ def process_file():
                 user_id=user_id,
                 audio_speed=audio_speed
             )
-            return jsonify({'status': 'processing'}), 202
+            return jsonify({'task_id': task.id, 'status': 'processing'}), 202
             
         return jsonify({"error": "Invalid file type"}), 400
         
