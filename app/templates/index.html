@@ -663,16 +663,20 @@
         if (progressContainer) progressContainer.style.display = 'block';
         if (statusMessage) statusMessage.textContent = 'Initializing...';
         
+        // Poll immediately, then every 2 seconds
+        pollProgress();
+        const pollInterval = setInterval(pollProgress, 2000);
+        
         // Function to poll the progress
         function pollProgress() {
             fetch(progressUrl)
-                .then(response => {
+                .then(function(response) {
                     if (!response.ok) {
                         throw new Error(`HTTP error ${response.status}`);
                     }
                     return response.json();
                 })
-                .then(data => {
+                .then(function(data) {
                     let response;
                     if (typeof data === 'string') {
                         response = JSON.parse(data);
@@ -705,7 +709,7 @@
                                     statusMessage.textContent = 'Finalizing audio file...';
                                     break;
                                 case 'completed':
-                                    statusMessage.textContent = 'Processing complete!';
+                                    statusMessage.textContent = 'Processing complete! Download starting...';
                                     if (progressBarFill) {
                                         progressBarFill.style.width = '100%';
                                         progressBarFill.classList.add('bg-success');
@@ -716,11 +720,11 @@
                                     const downloadUrl = '/download/' + taskId + '/' + outputFormat;
                                     console.log('File ready at: ' + downloadUrl);
 
-                                    // Create download button
+                                    // Create download button (as a backup)
                                     const downloadBtn = document.createElement('a');
                                     downloadBtn.href = downloadUrl;
                                     downloadBtn.className = 'btn';
-                                    downloadBtn.textContent = 'Download ' + outputFormat.toUpperCase();
+                                    downloadBtn.textContent = 'Download Again';
                                     downloadBtn.target = '_blank';
                                     
                                     // Add download button to the page
@@ -732,6 +736,9 @@
                                         downloadDiv.appendChild(downloadBtn);
                                         progressContainer.parentNode.insertBefore(downloadDiv, progressContainer.nextSibling);
                                     }
+                                    
+                                    // Automatically trigger download
+                                    window.location.href = downloadUrl;
                                     return;
                                 case 'error':
                                     statusMessage.textContent = 'Error: ' + (response.error || 'An unknown error occurred');
@@ -784,7 +791,7 @@
                         }
                     }
                 })
-                .catch(error => {
+                .catch(function(error) {
                     statusCheckCount++;
                     console.error('Error checking progress:', error);
                     
@@ -807,10 +814,6 @@
                     }
                 });
         }
-        
-        // Poll immediately, then every 2 seconds
-        pollProgress();
-        const pollInterval = setInterval(pollProgress, 2000);
     }
 
     // Add this function to handle language-based restrictions
