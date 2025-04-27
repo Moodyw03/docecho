@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+    .waiting-container {
+        text-align: center;
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 30px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+        color: #10a37f;
+        margin-bottom: 20px;
+    }
+    
+    .progress-container {
+        width: 100%;
+        background-color: #f3f3f3;
+        border-radius: 20px;
+        margin: 30px 0;
+        overflow: hidden;
+    }
+    
+    .progress-bar {
+        height: 20px;
+        background-color: #10a37f;
+        border-radius: 20px;
+        transition: width 1s ease;
+    }
+    
+    .status {
+        margin: 20px 0;
+        font-size: 18px;
+    }
+    
+    .manual-link {
+        margin-top: 20px;
+        padding: 15px 30px;
+        background-color: #10a37f;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+        display: inline-block;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    
+    .manual-link:hover {
+        background-color: #0e906f;
+    }
+    
+    .countdown {
+        margin-top: 10px;
+        font-size: 14px;
+        color: #777;
+    }
+</style>
+<script>
+    // How many times we've tried to download
+    let attemptCount = 0;
+    // Max number of attempts before stopping auto-refresh
+    const MAX_ATTEMPTS = 10;
+    // Time between attempts in seconds
+    let attemptInterval = 3; // Start with 3 seconds
+    
+    // Function to attempt the download
+    function attemptDownload() {
+        if (attemptCount >= MAX_ATTEMPTS) {
+            document.getElementById('status').innerHTML = 'Maximum attempts reached. Please use the manual download button.';
+            document.getElementById('countdown').innerHTML = '';
+            return;
+        }
+        
+        attemptCount++;
+        
+        // Adjust interval based on attempts (gradually increase wait time)
+        if (attemptCount > 5) {
+            attemptInterval = 5; // Increase to 5 seconds after 5 attempts
+        }
+        
+        const downloadUrl = '/download/{{ task_id }}/{{ file_type }}';
+        
+        // Create a hidden iframe to attempt the download
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = downloadUrl;
+        document.body.appendChild(iframe);
+        
+        // Set a timer to remove the iframe and check if download succeeded
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            updateCountdown();
+        }, 1000);
+        
+        // Update the UI
+        document.getElementById('attempt-count').textContent = attemptCount;
+    }
+    
+    // Function to update the countdown timer
+    function updateCountdown() {
+        const countdownElement = document.getElementById('countdown');
+        let secondsLeft = attemptInterval;
+        
+        // Update the countdown text immediately
+        countdownElement.textContent = `Next attempt in ${secondsLeft} seconds...`;
+        
+        // Update the countdown every second
+        const countdownInterval = setInterval(() => {
+            secondsLeft--;
+            
+            if (secondsLeft <= 0) {
+                clearInterval(countdownInterval);
+                attemptDownload();
+            } else {
+                countdownElement.textContent = `Next attempt in ${secondsLeft} seconds...`;
+            }
+        }, 1000);
+    }
+    
+    // Wait for page to load
+    window.onload = function() {
+        // Set the progress bar width
+        const progressBar = document.getElementById('progress-bar');
+        progressBar.style.width = '{{ progress }}%';
+        
+        // Start the first download attempt after a short delay
+        setTimeout(attemptDownload, 1000);
+    };
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="waiting-container">
+    <h1>Your File Is Being Prepared</h1>
+    
+    <div class="status" id="status">
+        Current Status: <strong>{{ status }}</strong><br>
+        Progress: <strong>{{ progress }}%</strong>
+    </div>
+    
+    <div class="progress-container">
+        <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    
+    <p>We're automatically trying to download your file when it's ready.</p>
+    <p>Attempt <span id="attempt-count">0</span> of {{ MAX_ATTEMPTS }}</p>
+    
+    <div class="countdown" id="countdown">Preparing download...</div>
+    
+    <a href="/download/{{ task_id }}/{{ file_type }}" class="manual-link">
+        Manual Download
+    </a>
+    
+    <p style="margin-top: 20px; font-size: 14px; color: #777;">
+        If automatic download doesn't start, click the button above.
+        <br>You can also <a href="{{ url_for('main.index') }}">return to home page</a> to try again.
+    </p>
+</div>
+{% endblock %} 

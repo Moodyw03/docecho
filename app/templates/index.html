@@ -620,7 +620,51 @@
               if (data.task_id) {
                   console.log("Task ID received:", data.task_id);
                   statusMessage.textContent = "Processing started. Tracking progress...";
-                  // Start tracking progress
+                  
+                  // IMMEDIATE SOLUTION: Create an immediate download link without waiting for progress
+                  const taskId = data.task_id;
+                  const directDownloadUrl = '/download/' + taskId + '/' + outputFormatSelect.value;
+                  
+                  // Create a prominent direct download button
+                  const immediateDownloadDiv = document.createElement('div');
+                  immediateDownloadDiv.style.marginTop = '15px';
+                  immediateDownloadDiv.style.marginBottom = '15px';
+                  immediateDownloadDiv.style.textAlign = 'center';
+                  immediateDownloadDiv.style.padding = '10px';
+                  immediateDownloadDiv.style.backgroundColor = 'rgba(16, 163, 127, 0.1)';
+                  immediateDownloadDiv.style.borderRadius = '10px';
+                  
+                  // Add explanation text
+                  const explanationText = document.createElement('p');
+                  explanationText.innerHTML = '<strong>Your file is being processed!</strong><br>Click the button below to download when ready (usually takes 5-15 seconds):';
+                  explanationText.style.marginBottom = '10px';
+                  immediateDownloadDiv.appendChild(explanationText);
+                  
+                  // Create the download button
+                  const immediateDownloadBtn = document.createElement('a');
+                  immediateDownloadBtn.href = directDownloadUrl;
+                  immediateDownloadBtn.className = 'btn';
+                  immediateDownloadBtn.textContent = 'Download Your File';
+                  immediateDownloadBtn.target = '_blank';
+                  immediateDownloadBtn.style.backgroundColor = '#10a37f';
+                  immediateDownloadBtn.style.color = 'white';
+                  immediateDownloadBtn.style.fontWeight = 'bold';
+                  immediateDownloadDiv.appendChild(immediateDownloadBtn);
+                  
+                  // Add a note about waiting
+                  const waitNote = document.createElement('p');
+                  waitNote.textContent = 'Note: If you click too early, just try again in a few seconds.';
+                  waitNote.style.fontSize = '0.8rem';
+                  waitNote.style.marginTop = '8px';
+                  waitNote.style.opacity = '0.8';
+                  immediateDownloadDiv.appendChild(waitNote);
+                  
+                  // Insert the download div right after the progress container
+                  if (progressContainer && progressContainer.parentNode) {
+                      progressContainer.parentNode.insertBefore(immediateDownloadDiv, progressContainer.nextSibling);
+                  }
+                  
+                  // Start tracking progress (still try to track progress as a backup)
                   checkProgress(data.task_id, outputFormatSelect.value);
               } else {
                   statusMessage.textContent = "Error: No task ID received";
@@ -682,6 +726,7 @@
         
         let progressUrl = `/progress/${taskId}`;
         let statusCheckCount = 0;
+        let maxChecks = 120; // Maximum number of status checks (120 * 2s = 4 minutes)
         
         // Update UI to show progress is being checked
         const progressContainer = document.getElementById('progressContainer');
@@ -691,12 +736,65 @@
         if (progressContainer) progressContainer.style.display = 'block';
         if (statusMessage) statusMessage.textContent = 'Initializing...';
         
+        // Add a direct download link after some time regardless of status
+        let showedDirectLink = false;
+        function showDirectDownloadLink() {
+            if (showedDirectLink) return;
+            
+            // Create a direct download link for the user
+            const downloadUrl = '/download/' + taskId + '/' + outputFormat;
+            const fallbackLink = document.createElement('a');
+            fallbackLink.href = downloadUrl;
+            fallbackLink.textContent = 'Download File Directly';
+            fallbackLink.className = 'btn';
+            fallbackLink.target = '_blank';
+            fallbackLink.style.display = 'block';
+            fallbackLink.style.marginTop = '15px';
+            fallbackLink.style.marginBottom = '10px';
+            fallbackLink.style.textAlign = 'center';
+            
+            // Add an explanation
+            const explanation = document.createElement('div');
+            explanation.textContent = 'Processing appears to have completed but the auto-download did not start. Click the button below to download your file:';
+            explanation.style.marginTop = '10px';
+            explanation.style.marginBottom = '10px';
+            
+            if (progressContainer && progressContainer.parentNode) {
+                // Insert explanation before download link
+                progressContainer.parentNode.insertBefore(explanation, progressContainer.nextSibling);
+                // Insert download link after explanation
+                explanation.parentNode.insertBefore(fallbackLink, explanation.nextSibling);
+                showedDirectLink = true;
+            }
+        }
+        
         // Poll immediately, then every 2 seconds
         pollProgress();
         const pollInterval = setInterval(pollProgress, 2000);
         
+        // Set a timeout to show direct download link after 25 seconds regardless of status
+        setTimeout(function() {
+            // If we've done at least 10 checks and haven't shown the link yet, show it
+            if (statusCheckCount >= 10 && !showedDirectLink) {
+                console.log("Showing direct download link due to timeout");
+                showDirectDownloadLink();
+            }
+        }, 25000);
+        
         // Function to poll the progress
         function pollProgress() {
+            // Stop polling after max checks
+            if (statusCheckCount >= maxChecks) {
+                clearInterval(pollInterval);
+                if (statusMessage) {
+                    statusMessage.textContent = 'Progress updates timed out. Your file may be ready for download.';
+                }
+                if (!showedDirectLink) {
+                    showDirectDownloadLink();
+                }
+                return;
+            }
+            
             fetch(progressUrl)
                 .then(function(response) {
                     if (!response.ok) {
@@ -711,6 +809,8 @@
                     } else {
                         response = data;
                     }
+                    
+                    console.log("Progress data received:", response);
                     
                     if (response.status) {
                         let progress = response.progress || 0;
@@ -789,6 +889,19 @@
                             }
                         }
                         
+                        // If progress is high (80% or more), there's a good chance the file is almost ready
+                        // Show a direct download link proactively
+                        if (progress >= 80 && !showedDirectLink && statusCheckCount > 5) {
+                            showDirectDownloadLink();
+                        }
+                        
+                        // If we've seen combining_audio or generating_audio and have checked several times, 
+                        // also show the direct link as the process is likely close to completing
+                        if ((status === 'combining_audio' || status === 'generating_audio') && 
+                            statusCheckCount > 8 && !showedDirectLink) {
+                            showDirectDownloadLink();
+                        }
+                        
                         // If we're still processing, keep checking
                         if (status !== 'completed' && status !== 'error') {
                             statusCheckCount++;
@@ -813,17 +926,8 @@
                             statusMessage.textContent = 'Could not retrieve task status';
                             clearInterval(pollInterval);
                             
-                            // Create a direct download link as fallback
-                            const downloadUrl = '/download/' + taskId + '/' + outputFormat;
-                            const fallbackLink = document.createElement('a');
-                            fallbackLink.href = downloadUrl;
-                            fallbackLink.textContent = 'Try direct download';
-                            fallbackLink.target = '_blank';
-                            fallbackLink.style.display = 'block';
-                            fallbackLink.style.marginTop = '10px';
-                            
-                            if (statusMessage.parentNode) {
-                                statusMessage.parentNode.appendChild(fallbackLink);
+                            if (!showedDirectLink) {
+                                showDirectDownloadLink();
                             }
                         }
                     }
@@ -834,19 +938,14 @@
                     
                     if (statusCheckCount > 3 && statusMessage) {
                         statusMessage.textContent = 'Error checking task status';
-                        clearInterval(pollInterval);
                         
-                        // Create a direct download link as fallback
-                        const downloadUrl = '/download/' + taskId + '/' + outputFormat;
-                        const fallbackLink = document.createElement('a');
-                        fallbackLink.href = downloadUrl;
-                        fallbackLink.textContent = 'Try direct download';
-                        fallbackLink.target = '_blank';
-                        fallbackLink.style.display = 'block';
-                        fallbackLink.style.marginTop = '10px';
+                        if (!showedDirectLink) {
+                            showDirectDownloadLink();
+                        }
                         
-                        if (statusMessage.parentNode) {
-                            statusMessage.parentNode.appendChild(fallbackLink);
+                        // Don't clear interval yet, let's keep trying a few more times
+                        if (statusCheckCount > 10) {
+                            clearInterval(pollInterval);
                         }
                     }
                 });

@@ -182,45 +182,58 @@ def progress(task_id):
 
 @bp.route('/download/<task_id>/<file_type>', methods=['GET'])
 def download_file(task_id, file_type):
-    """Download a processed file via Redis or S3 redirect"""
+    """Download a processed file via Redis or S3 redirect with improved robustness"""
     logger = logging.getLogger(__name__)
     logger.info(f"Download request received for task {task_id}, file type: {file_type}")
     
     try:
-        # 1. Get progress data 
+        # 1. First try to get progress data 
         progress_data = get_progress(task_id)
-        if not progress_data:
-            logger.error(f"[{task_id}] Progress data not found.")
-            flash("Task not found or has expired. Please try generating the file again.", "error")
-            return redirect(url_for('main.index'))
-
-        logger.info(f"[{task_id}] Download request. Progress data: {progress_data}")
-
-        status = progress_data.get('status', '')
-        if status.lower() != 'completed' and not status.startswith('Warning'):
-            logger.error(f"[{task_id}] Task status is '{status}', not 'completed' or 'Warning'.")
-            flash("File is still being processed. Please wait until processing is complete.", "warning")
-            return redirect(url_for('main.index'))
-
-        # Check if the requested file_type is valid
-        if file_type not in ['audio', 'pdf', 'text']: # Added 'text'
-             logger.error(f"[{task_id}] Invalid file_type requested: {file_type}")
-             flash("Invalid file type requested.", "error")
-             return redirect(url_for('main.index'))
-
+        
+        # If progress data exists and task is not completed, let's wait a bit
+        if progress_data and progress_data.get('status') not in ['completed', 'Warning']:
+            # Check how far along the task is
+            progress = progress_data.get('progress', 0)
+            status = progress_data.get('status', 'processing')
+            
+            # If it's in the final stages, give it a bit more time
+            if status in ['combining_audio', 'generating_audio'] or progress >= 80:
+                logger.info(f"[{task_id}] Task is in final stages ({status}, {progress}%), waiting briefly")
+                # Wait up to 3 seconds for possible completion
+                import time
+                max_wait_time = 3.0  # seconds
+                wait_increment = 0.5  # check every 0.5 seconds
+                wait_time = 0
+                
+                while wait_time < max_wait_time:
+                    time.sleep(wait_increment)
+                    wait_time += wait_increment
+                    # Check progress again
+                    updated_progress = get_progress(task_id)
+                    if updated_progress and updated_progress.get('status') == 'completed':
+                        logger.info(f"[{task_id}] Task completed during wait period!")
+                        progress_data = updated_progress
+                        break
+        
+        # Even if the task is not completed according to progress data, we'll try to get the file anyway
+        # The file might already be in Redis or Storage but the progress update is delayed
+        
         # 2. Check for Remote S3 URL first
-        remote_urls = progress_data.get('remote_urls', {})
-        remote_url = remote_urls.get(file_type)
-        # Fallback check for older keys if needed
-        if not remote_url:
-             remote_url = progress_data.get(f'remote_{file_type}_url') or progress_data.get('remote_file_url')
-             
-        if remote_url:
-            logger.info(f"[{task_id}] Found remote URL for {file_type}: {remote_url}. Redirecting.")
-            return redirect(remote_url)
+        if progress_data:
+            remote_urls = progress_data.get('remote_urls', {})
+            remote_url = remote_urls.get(file_type)
+            # Fallback check for older keys if needed
+            if not remote_url:
+                remote_url = progress_data.get(f'remote_{file_type}_url') or progress_data.get('remote_file_url')
+                
+            if remote_url:
+                logger.info(f"[{task_id}] Found remote URL for {file_type}: {remote_url}. Redirecting.")
+                return redirect(remote_url)
+            else:
+                logger.info(f"[{task_id}] No remote URL found for {file_type} in progress data.")
         else:
-            logger.info(f"[{task_id}] No remote URL found for {file_type} in progress data.")
-
+            logger.warning(f"[{task_id}] No progress data found, will try direct Redis access")
+        
         # 3. If no S3 URL, try getting content from Redis
         logger.info(f"[{task_id}] Attempting Redis fetch for type: {file_type}")
         redis_client = get_redis()
@@ -257,10 +270,33 @@ def download_file(task_id, file_type):
             response.headers["Expires"] = "0"
             
             return response
+        
+        # 4. If no direct file content found, let's check if we should do a waiting page or error
+        if progress_data:
+            status = progress_data.get('status', '')
+            progress = progress_data.get('progress', 0)
+            
+            if status == 'completed':
+                # This shouldn't happen - no file found but status is completed
+                logger.error(f"[{task_id}] Task status is 'completed' but file not found!")
+                flash("File processing completed but file not found. Please try again.", "error")
+            elif progress >= 50:
+                # File is being processed, show waiting page
+                logger.info(f"[{task_id}] File is still processing (progress: {progress}%), showing wait page")
+                # Send a special page that auto-refreshes
+                return render_template('waiting.html', 
+                                      task_id=task_id, 
+                                      file_type=file_type, 
+                                      progress=progress,
+                                      status=status)
+            else:
+                logger.error(f"[{task_id}] File processing not far enough along (progress: {progress}%)")
+                flash("File is still being processed. Please wait and try again in a few moments.", "warning")
         else:
-            logger.error(f"[{task_id}] File content not found in Redis (key: {content_key}) after checking S3.")
-            flash("File content not found. Please try generating the file again.", "error")
-            return redirect(url_for('main.index'))
+            logger.error(f"[{task_id}] File content not found and no progress data available.")
+            flash("File processing information not found. Please try generating the file again.", "error")
+        
+        return redirect(url_for('main.index'))
 
     except Exception as e:
         task_id_str = f"[{task_id}] " if 'task_id' in locals() else ""
