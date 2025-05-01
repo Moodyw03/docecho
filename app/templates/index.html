@@ -675,27 +675,30 @@
                   
                   if (selectedFormat === 'both') {
                       // For 'both' format, create a container for both buttons
-                      const bothButtonsDiv = document.createElement('div');
-                      bothButtonsDiv.style.marginTop = '5px';
-                      explanation.parentNode.insertBefore(bothButtonsDiv, explanation.nextSibling);
                       
-                      // Create audio download button
-                      const audioLink = document.createElement('a');
-                      audioLink.href = '/download/' + taskId + '/audio';
-                      audioLink.textContent = 'Download Audio (MP3)';
-                      audioLink.className = 'btn';
-                      audioLink.target = '_blank';
-                      audioLink.style.display = 'block';
-                      audioLink.style.marginBottom = '10px';
-                      bothButtonsDiv.appendChild(audioLink);
+                      // Create the audio download button
+                      const audioDownloadBtn = document.createElement('a');
+                      audioDownloadBtn.href = '/download/' + taskId + '/audio';
+                      audioDownloadBtn.className = 'btn';
+                      audioDownloadBtn.textContent = 'Download Audio (MP3)';
+                      audioDownloadBtn.target = '_blank';
+                      audioDownloadBtn.style.backgroundColor = '#10a37f';
+                      audioDownloadBtn.style.color = 'white';
+                      audioDownloadBtn.style.fontWeight = 'bold';
+                      audioDownloadBtn.style.marginBottom = '10px';
+                      audioDownloadBtn.style.display = 'block';
+                      immediateDownloadDiv.appendChild(audioDownloadBtn);
                       
-                      // Create PDF download button
-                      const pdfLink = document.createElement('a');
-                      pdfLink.href = '/download/' + taskId + '/pdf';
-                      pdfLink.textContent = 'Download PDF Document';
-                      pdfLink.className = 'btn';
-                      pdfLink.target = '_blank';
-                      bothButtonsDiv.appendChild(pdfLink);
+                      // Create the PDF download button
+                      const pdfDownloadBtn = document.createElement('a');
+                      pdfDownloadBtn.href = '/download/' + taskId + '/pdf';
+                      pdfDownloadBtn.className = 'btn';
+                      pdfDownloadBtn.textContent = 'Download PDF Document';
+                      pdfDownloadBtn.target = '_blank';
+                      pdfDownloadBtn.style.backgroundColor = '#10a37f';
+                      pdfDownloadBtn.style.color = 'white';
+                      pdfDownloadBtn.style.fontWeight = 'bold';
+                      immediateDownloadDiv.appendChild(pdfDownloadBtn);
                       
                       // Also trigger automatic downloads with iframes
                       const hiddenFramesDiv = document.createElement('div');
