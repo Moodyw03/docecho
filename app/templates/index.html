@@ -954,10 +954,22 @@
                                     }
                                     break;
                                 case 'generating_audio':
-                                    statusMessage.textContent = 'Generating audio...';
+                                    if (outputFormat === 'pdf') {
+                                        statusMessage.textContent = 'Generating PDF document...';
+                                    } else if (outputFormat === 'both') {
+                                        statusMessage.textContent = 'Generating audio and PDF files...';
+                                    } else {
+                                        statusMessage.textContent = 'Generating audio...';
+                                    }
                                     break;
                                 case 'combining_audio':
-                                    statusMessage.textContent = 'Finalizing audio file...';
+                                    if (outputFormat === 'pdf') {
+                                        statusMessage.textContent = 'Finalizing PDF document...';
+                                    } else if (outputFormat === 'both') {
+                                        statusMessage.textContent = 'Finalizing audio and PDF files...';
+                                    } else {
+                                        statusMessage.textContent = 'Finalizing audio file...';
+                                    }
                                     break;
                                 case 'completed':
                                     statusMessage.textContent = 'Processing complete! Download starting...';
