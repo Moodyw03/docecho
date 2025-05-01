@@ -543,6 +543,33 @@
       // Initialize font warning on page load
       updateFontWarning();
       
+      // Function to update the main button text based on output format
+      function updateButtonText() {
+        const outputFormatSelect = document.getElementById('output_format');
+        const submitButton = document.querySelector('#uploadForm button[type="submit"]');
+        
+        if (!outputFormatSelect || !submitButton) {
+          console.error("Could not find output format select or submit button.");
+          return;
+        }
+        
+        const selectedFormat = outputFormatSelect.value;
+        let buttonText = 'Convert'; // Default text
+        
+        switch (selectedFormat) {
+          case 'audio':
+            buttonText = 'Convert to Audio (MP3)';
+            break;
+          case 'pdf':
+            buttonText = 'Convert to Text PDF';
+            break;
+          case 'both':
+            buttonText = 'Convert to Audio & PDF';
+            break;
+        }
+        submitButton.textContent = buttonText;
+      }
+      
       // Form submission handler - most critical part
       const uploadForm = document.getElementById("uploadForm");
       if (uploadForm) {
