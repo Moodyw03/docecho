@@ -660,41 +660,66 @@
                   immediateDownloadDiv.style.backgroundColor = 'rgba(16, 163, 127, 0.1)';
                   immediateDownloadDiv.style.borderRadius = '10px';
                   
-                  // Add explanation text
+                  // Add explanation text about how downloads will be handled
                   const explanationText = document.createElement('p');
-                  explanationText.innerHTML = '<strong>Your file is being processed!</strong><br>' + 
-                      (selectedFormat === 'both' ? 
-                          'Click the buttons below to download your files when ready (usually takes 5-15 seconds):' : 
-                          'Click the button below to download when ready (usually takes 5-15 seconds):');
+                  if (selectedFormat === 'both') {
+                      explanationText.innerHTML = '<strong>Your files are being processed!</strong><br>' +
+                          'Both formats will download automatically when ready (usually takes 5-15 seconds).<br>' +
+                          'You can also use the buttons below if needed:';
+                  } else {
+                      explanationText.innerHTML = '<strong>Your file is being processed!</strong><br>' +
+                          'Click the button below to download when ready (usually takes 5-15 seconds):';
+                  }
                   explanationText.style.marginBottom = '10px';
                   immediateDownloadDiv.appendChild(explanationText);
                   
                   if (selectedFormat === 'both') {
-                      // For 'both' format, create two separate download buttons
+                      // For 'both' format, create a container for both buttons
+                      const bothButtonsDiv = document.createElement('div');
+                      bothButtonsDiv.style.marginTop = '5px';
+                      explanation.parentNode.insertBefore(bothButtonsDiv, explanation.nextSibling);
                       
-                      // Create the audio download button
-                      const audioDownloadBtn = document.createElement('a');
-                      audioDownloadBtn.href = '/download/' + taskId + '/audio';
-                      audioDownloadBtn.className = 'btn';
-                      audioDownloadBtn.textContent = 'Download Audio (MP3)';
-                      audioDownloadBtn.target = '_blank';
-                      audioDownloadBtn.style.backgroundColor = '#10a37f';
-                      audioDownloadBtn.style.color = 'white';
-                      audioDownloadBtn.style.fontWeight = 'bold';
-                      audioDownloadBtn.style.marginBottom = '10px';
-                      audioDownloadBtn.style.display = 'block';
-                      immediateDownloadDiv.appendChild(audioDownloadBtn);
+                      // Create audio download button
+                      const audioLink = document.createElement('a');
+                      audioLink.href = '/download/' + taskId + '/audio';
+                      audioLink.textContent = 'Download Audio (MP3)';
+                      audioLink.className = 'btn';
+                      audioLink.target = '_blank';
+                      audioLink.style.display = 'block';
+                      audioLink.style.marginBottom = '10px';
+                      bothButtonsDiv.appendChild(audioLink);
                       
-                      // Create the PDF download button
-                      const pdfDownloadBtn = document.createElement('a');
-                      pdfDownloadBtn.href = '/download/' + taskId + '/pdf';
-                      pdfDownloadBtn.className = 'btn';
-                      pdfDownloadBtn.textContent = 'Download PDF Document';
-                      pdfDownloadBtn.target = '_blank';
-                      pdfDownloadBtn.style.backgroundColor = '#10a37f';
-                      pdfDownloadBtn.style.color = 'white';
-                      pdfDownloadBtn.style.fontWeight = 'bold';
-                      immediateDownloadDiv.appendChild(pdfDownloadBtn);
+                      // Create PDF download button
+                      const pdfLink = document.createElement('a');
+                      pdfLink.href = '/download/' + taskId + '/pdf';
+                      pdfLink.textContent = 'Download PDF Document';
+                      pdfLink.className = 'btn';
+                      pdfLink.target = '_blank';
+                      bothButtonsDiv.appendChild(pdfLink);
+                      
+                      // Also trigger automatic downloads with iframes
+                      const hiddenFramesDiv = document.createElement('div');
+                      hiddenFramesDiv.style.display = 'none';
+                      document.body.appendChild(hiddenFramesDiv);
+                      
+                      // Function to create and use a hidden iframe for download
+                      function downloadWithIframe(url, frameId) {
+                          // Create iframe
+                          const iframe = document.createElement('iframe');
+                          iframe.id = frameId;
+                          iframe.style.display = 'none';
+                          hiddenFramesDiv.appendChild(iframe);
+                          // Set source to trigger download
+                          iframe.src = url;
+                      }
+                      
+                      // Download audio first
+                      downloadWithIframe('/download/' + taskId + '/audio', 'audioFallbackFrame');
+                      
+                      // Download PDF after a short delay
+                      setTimeout(function() {
+                          downloadWithIframe('/download/' + taskId + '/pdf', 'pdfFallbackFrame');
+                      }, 1500);
                   } else {
                       // For single format, create one download button as before
                       const directDownloadUrl = '/download/' + taskId + '/' + selectedFormat;
@@ -972,8 +997,35 @@
                                             progressContainer.parentNode.insertBefore(bothDownloadDiv, progressContainer.nextSibling);
                                         }
                                         
-                                        // Automatically trigger the audio download first
-                                        window.location.href = '/download/' + taskId + '/audio';
+                                        // Add a success message
+                                        statusMessage.textContent = 'Files ready! Downloading both formats...';
+                                        
+                                        // Create a hidden container for download iframes
+                                        const hiddenFramesDiv = document.createElement('div');
+                                        hiddenFramesDiv.style.display = 'none';
+                                        document.body.appendChild(hiddenFramesDiv);
+                                        
+                                        // Function to create and use a hidden iframe for download
+                                        function downloadWithIframe(url, frameId) {
+                                            // Create or get existing iframe
+                                            let iframe = document.getElementById(frameId);
+                                            if (!iframe) {
+                                                iframe = document.createElement('iframe');
+                                                iframe.id = frameId;
+                                                iframe.style.display = 'none';
+                                                hiddenFramesDiv.appendChild(iframe);
+                                            }
+                                            // Set the source to trigger download
+                                            iframe.src = url;
+                                        }
+                                        
+                                        // Download audio first
+                                        downloadWithIframe('/download/' + taskId + '/audio', 'audioDownloadFrame');
+                                        
+                                        // Download PDF after a short delay
+                                        setTimeout(function() {
+                                            downloadWithIframe('/download/' + taskId + '/pdf', 'pdfDownloadFrame');
+                                        }, 1500);
                                     } else {
                                         // Original single-format download handling
                                         const downloadUrl = '/download/' + taskId + '/' + outputFormat;
