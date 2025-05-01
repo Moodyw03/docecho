@@ -3,7 +3,8 @@ from gtts import gTTS
 from pydub import AudioSegment
 from googletrans import Translator
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.units import inch
 from app.utils.progress import update_progress
 # Import celery instance
 from celery_worker import celery
@@ -26,6 +27,7 @@ from app.utils.file_storage import copy_to_remote_storage
 from app.utils.redis import get_redis
 from celery import shared_task
 from app import create_app
+import textwrap
 
 # Add logger instance
 logger = logging.getLogger(__name__)
@@ -68,7 +70,7 @@ language_map = {
 }
 
 # Smaller chunk size for better processing
-def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=200):
+def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=500):
     try:
         reader = PdfReader(pdf_path)
         chunks = []
@@ -79,19 +81,38 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=200):
             # Garbage collection on every page
             gc.collect()
             
+            # Extract text with more careful layout handling
             page_text = page.extract_text()
             if not page_text:
                 continue
-                
-            sentences = page_text.replace('\n', ' ').split('. ')
             
-            for sentence in sentences:
-                if len(current_chunk) + len(sentence) + 2 > max_chunk_length:
-                    if current_chunk:
-                        chunks.append(current_chunk.strip())
-                    current_chunk = sentence + '. '
-                else:
-                    current_chunk += sentence + '. '
+            # Preserve paragraph breaks for better layout and comprehension
+            paragraphs = re.split(r'\n\s*\n', page_text)
+            
+            for paragraph in paragraphs:
+                # Remove excessive whitespace but preserve line breaks for layout
+                paragraph = re.sub(r'\s+', ' ', paragraph).strip()
+                paragraph = paragraph.replace('\n', ' ').strip()
+                
+                # Split into sentences more intelligently
+                sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+                
+                for sentence in sentences:
+                    if not sentence.strip():
+                        continue
+                        
+                    # If adding this sentence would exceed max_chunk_length
+                    if len(current_chunk) + len(sentence) + 2 > max_chunk_length:
+                        if current_chunk:
+                            chunks.append(current_chunk.strip())
+                        current_chunk = sentence.strip() + ' '
+                    else:
+                        current_chunk += sentence.strip() + ' '
+            
+            # Add a paragraph break at the end of each page
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ''
             
             # Free up memory from page immediately
             page = None
@@ -106,6 +127,7 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=200):
             
         return chunks
     except Exception as e:
+        logger.error(f"Error extracting text from PDF: {str(e)}")
         raise Exception(f"Error extracting text from PDF: {e}")
 
 def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, tld='com'):
@@ -173,173 +195,271 @@ def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, t
         raise Exception(f"Error converting text to audio: {e}")
 
 def concatenate_audio_files(audio_files, output_path):
-    logger.info(f"Starting concatenation. Input files: {audio_files}, Output path: {output_path}")
+    """
+    Concatenate multiple audio files into a single file with memory-efficient approach.
+    For large files, uses a stream-based approach to avoid loading all audio into memory.
+    """
+    logger.info(f"Starting concatenation. Input files: {len(audio_files)} files, Output path: {output_path}")
     if not audio_files:
         logger.warning("Concatenation called with no audio files.")
-        # Decide how to handle this: raise error or create empty file?
-        # For now, let's raise an error to make it clear.
         raise ValueError("Cannot concatenate an empty list of audio files.")
         
     try:
-        combined = AudioSegment.empty()
-        for i, file in enumerate(audio_files):
+        # Check if the total size of audio files is large (>100MB)
+        total_size = sum(os.path.getsize(f) for f in audio_files if os.path.exists(f))
+        logger.info(f"Total audio size to concatenate: {total_size/1024/1024:.2f} MB")
+        
+        # For large files, use a more memory-efficient approach
+        if total_size > 100 * 1024 * 1024:  # >100MB
+            logger.info("Using memory-efficient concatenation for large files")
+            
+            # Get format and rate info from first file
+            first_file = audio_files[0]
+            info = AudioSegment.from_file(first_file)
+            
+            # Create a temporary directory for intermediate files
+            temp_dir = tempfile.mkdtemp(prefix="audio_concat_")
             try:
-                logger.debug(f"Concatenating chunk {i}: {file}")
-                # Check if file exists just before loading
-                if not os.path.exists(file):
-                    logger.error(f"Audio chunk file not found during concatenation: {file}")
-                    # Optionally, skip this chunk or raise an error
-                    # Raising error for now to highlight the issue
-                    raise FileNotFoundError(f"Audio chunk file not found: {file}")
-                    
-                audio = AudioSegment.from_file(file)
-                combined += audio
-                logger.debug(f"Successfully added chunk {i}: {file}. Current combined duration: {len(combined)}ms")
-            except Exception as chunk_e:
-                logger.error(f"Error processing audio chunk {file}: {str(chunk_e)}", exc_info=True)
-                # Decide whether to continue or fail the whole process
-                raise Exception(f"Failed to process chunk {file}: {str(chunk_e)}")
+                # Process files in batches of 10 to avoid memory issues
+                batch_size = 10
+                batch_files = []
                 
-        # Ensure output directory exists before exporting
-        output_dir = os.path.dirname(output_path)
-        logger.debug(f"Ensuring output directory exists: {output_dir}")
-        os.makedirs(output_dir, exist_ok=True)
+                for i in range(0, len(audio_files), batch_size):
+                    batch = audio_files[i:i+batch_size]
+                    
+                    # Create a batch output file
+                    batch_output = os.path.join(temp_dir, f"batch_{i//batch_size}.mp3")
+                    
+                    # Combine this small batch
+                    mini_combined = AudioSegment.empty()
+                    for file in batch:
+                        if os.path.exists(file):
+                            segment = AudioSegment.from_file(file)
+                            mini_combined += segment
+                            # Clear segment to free memory
+                            segment = None
+                            gc.collect()
+                    
+                    # Export batch
+                    mini_combined.export(batch_output, format="mp3")
+                    batch_files.append(batch_output)
+                    
+                    # Clear mini_combined to free memory
+                    mini_combined = None
+                    gc.collect()
+                
+                # Now combine all batch files using ffmpeg directly (most efficient)
+                # Create a file list for ffmpeg
+                list_file = os.path.join(temp_dir, "files.txt")
+                with open(list_file, 'w') as f:
+                    for batch_file in batch_files:
+                        f.write(f"file '{batch_file}'\n")
+                
+                # Use ffmpeg to concatenate without reencoding
+                import subprocess
+                cmd = [
+                    'ffmpeg', '-y', '-f', 'concat', '-safe', '0', 
+                    '-i', list_file, '-c', 'copy', output_path
+                ]
+                
+                logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    logger.error(f"FFmpeg error: {result.stderr}")
+                    raise Exception(f"FFmpeg concatenation failed: {result.stderr}")
+                
+                logger.info(f"Successfully concatenated {len(audio_files)} files to {output_path}")
+                
+            finally:
+                # Clean up temporary files
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as cleanup_err:
+                    logger.warning(f"Error cleaning up temp files: {cleanup_err}")
         
-        logger.info(f"Exporting combined audio ({len(combined)}ms) to: {output_path}")
-        combined.export(output_path, format="mp3")
-        
-        # Verify export by checking file existence and size
-        if os.path.exists(output_path):
-             logger.info(f"Successfully exported combined audio. File size: {os.path.getsize(output_path)} bytes.")
         else:
-             logger.error(f"Export failed! Combined audio file not found at: {output_path}")
-             raise IOError(f"Failed to export combined audio file to {output_path}")
-             
+            # For smaller files, use the simpler approach
+            logger.info("Using standard concatenation for smaller files")
+            combined = AudioSegment.empty()
+            
+            for i, file in enumerate(audio_files):
+                try:
+                    logger.debug(f"Concatenating chunk {i}: {file}")
+                    
+                    # Check if file exists just before loading
+                    if not os.path.exists(file):
+                        logger.error(f"Audio chunk file not found during concatenation: {file}")
+                        continue  # Skip missing files rather than failing
+                        
+                    audio = AudioSegment.from_file(file)
+                    combined += audio
+                    
+                    # Help garbage collector after each file
+                    audio = None
+                    if i % 10 == 0:  # Every 10 files, force garbage collection
+                        gc.collect()
+                        
+                    logger.debug(f"Successfully added chunk {i}. Current combined duration: {len(combined)}ms")
+                    
+                except Exception as chunk_e:
+                    logger.error(f"Error processing audio chunk {file}: {str(chunk_e)}", exc_info=True)
+                    # Continue with next file instead of failing the whole process
+            
+            # Export the combined audio
+            combined.export(output_path, format="mp3")
+            logger.info(f"Successfully concatenated {len(audio_files)} files to {output_path}")
+            
+            # Clear memory
+            combined = None
+            gc.collect()
+            
+        return output_path
+            
     except Exception as e:
-        # Log which specific file caused the error if possible
-        failed_file = file if 'file' in locals() else 'N/A' 
-        logger.error(f"Concatenation failed. Last attempted chunk file: {failed_file}. Output path: {output_path}. Error: {e}", exc_info=True)
-        # Re-raise the specific error or a generic one
-        raise Exception(f"Error concatenating audio files: {e}")
+        logger.error(f"Error concatenating audio files: {str(e)}", exc_info=True)
+        raise Exception(f"Failed to concatenate audio files: {str(e)}")
 
 def create_translated_pdf(text, output_path, language_code='en'):
+    """
+    Create a PDF with the translated text that properly preserves layout and handles non-Latin scripts.
+    """
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.units import inch
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from io import BytesIO
+    import textwrap
+    
     try:
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        import os
-        from flask import current_app
+        # Define page dimensions
+        page_width, page_height = A4
         
-        # Create Canvas with letter size
-        c = canvas.Canvas(output_path, pagesize=letter)
-        width, height = letter
-        y = height - 50
-        
-        # Determine appropriate font based on language
-        font_name = "Helvetica"
-        font_size = 11
-        
-        # Languages that need special font handling
-        complex_script_languages = {
-            # Empty dictionary since we've removed all complex script languages
-        }
-        
-        # Check if language needs special handling
-        if language_code in complex_script_languages:
-            logger.info(f"Using special font handling for language: {language_code}")
-            font_config = complex_script_languages[language_code]
+        # Unicode font registration for better language support
+        try:
+            # Try to register a Unicode font that supports many languages
+            font_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'fonts')
+            os.makedirs(font_path, exist_ok=True)
             
-            # For languages with complex scripts, we'll add a specific warning note
-            warning_message = font_config.get("message", "Some characters may not render correctly due to font limitations.")
-            c.setFont("Helvetica", 9)
-            c.drawString(50, height - 30, f"Warning: {warning_message}")
+            # Check if we have DejaVuSans available, which supports many languages
+            # First, check if we already have the font
+            dejavu_path = os.path.join(font_path, 'DejaVuSans.ttf')
             
-            # Use fallback font since we can't guarantee the availability of specialized fonts
-            font_name = font_config["fallback"]
+            if not os.path.exists(dejavu_path):
+                # If not, try to download it
+                import urllib.request
+                font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+                try:
+                    urllib.request.urlretrieve(font_url, dejavu_path)
+                    logger.info(f"Downloaded DejaVuSans font to {dejavu_path}")
+                except Exception as e:
+                    logger.warning(f"Could not download DejaVuSans font: {e}")
+                    # Continue with default fonts
             
-            # Special handling for RTL languages (like Arabic)
-            is_rtl = font_config.get("rtl", False)
-            if is_rtl:
-                # Add note about RTL limitations                
-                c.setFont("Helvetica", 9)
-                c.drawString(50, height - 45, "Note: PDF generated with left-to-right layout for Arabic text.")
-                c.drawString(50, height - 60, "For best results, consider using audio output.")
-                y = height - 80  # Start content lower due to multiple notes
-                
-                # Simple RTL simulation - reversing each line
-                # This is not perfect but helps visualize the text better than nothing
-                # Note: Proper RTL would require specialized RTL-aware libraries
-                text_lines = text.split('\n')
-                reversed_lines = []
-                for line in text_lines:
-                    # Reverse the line for RTL display
-                    # This is a simple approach and won't handle complex bidirectional text properly
-                    reversed_lines.append(' '.join(reversed(line.split())))
-                text = '\n'.join(reversed_lines)
+            # Register the font if it exists
+            if os.path.exists(dejavu_path):
+                pdfmetrics.registerFont(TTFont('DejaVuSans', dejavu_path))
+                font_name = 'DejaVuSans'
+                logger.info(f"Using DejaVuSans font for PDF generation")
             else:
-                y = height - 50  # Reset to default starting position
+                # Fallback to built-in fonts
+                font_name = 'Helvetica'
+                logger.info(f"Using Helvetica font for PDF generation")
+        except Exception as font_error:
+            logger.warning(f"Error registering custom font: {font_error}")
+            # Fallback to built-in font
+            font_name = 'Helvetica'
         
-        # Set the font
+        # Set font size based on language
+        font_size = 11
+        line_height = font_size * 1.2
+        
+        # Create a PDF canvas
+        c = canvas.Canvas(output_path, pagesize=A4)
+        width, height = A4
+        
+        # Set margins
+        left_margin = 72  # 1 inch in points
+        right_margin = width - 72
+        top_margin = height - 72
+        bottom_margin = 72
+        text_width = right_margin - left_margin
+        
+        # Set font
         c.setFont(font_name, font_size)
         
-        lines = text.split('\n')
-        for line in lines:
-            # Skip empty lines
-            if not line or line.isspace():
-                y -= 10  # Less space for empty line
+        # Split text into paragraphs
+        paragraphs = text.split('\n\n')
+        
+        # Current position on page
+        y_position = top_margin
+        
+        for paragraph in paragraphs:
+            # Skip empty paragraphs
+            if not paragraph.strip():
                 continue
                 
-            words = line.split()
-            current_line = []
+            # Wrap text to fit within margins
+            paragraph = paragraph.replace('\n', ' ').strip()
+            wrapped_lines = textwrap.wrap(paragraph, width=int(text_width/6))  # Approximate character count
             
-            for word in words:
-                current_line.append(word)
-                try:
-                    line_width = c.stringWidth(' '.join(current_line), font_name, font_size)
-                except:
-                    # If we can't determine width, make a conservative estimate
-                    line_width = len(' '.join(current_line)) * (font_size * 0.6)
-                
-                if line_width > width - 100:
-                    current_line.pop()
-                    if current_line:
-                        try:
-                            c.drawString(50, y, ' '.join(current_line))
-                        except Exception as e:
-                            # If drawing fails, try to represent characters as best as possible
-                            logger.warning(f"Error drawing text: {e}, attempting fallback")
-                            # Replace non-Latin characters with a question mark
-                            safe_text = ''.join([c if ord(c) < 128 else '?' for c in ' '.join(current_line)])
-                            c.drawString(50, y, safe_text)
-                        y -= 20
-                    current_line = [word]
-                
-                if y < 50:
+            # Check if we need a new page
+            if y_position - (len(wrapped_lines) * line_height) < bottom_margin:
+                c.showPage()
+                c.setFont(font_name, font_size)
+                y_position = top_margin
+            
+            # Add each line of the wrapped paragraph
+            for line in wrapped_lines:
+                if y_position < bottom_margin:
                     c.showPage()
                     c.setFont(font_name, font_size)
-                    y = height - 50
+                    y_position = top_margin
+                
+                # Draw text with UTF-8 encoding to handle special characters
+                c.drawString(left_margin, y_position, line)
+                y_position -= line_height
             
-            if current_line:
-                try:
-                    c.drawString(50, y, ' '.join(current_line))
-                except Exception as e:
-                    # Fallback for problematic characters
-                    logger.warning(f"Error drawing text: {e}, attempting fallback")
-                    safe_text = ''.join([c if ord(c) < 128 else '?' for c in ' '.join(current_line)])
-                    c.drawString(50, y, safe_text)
-                y -= 20
+            # Add some space between paragraphs
+            y_position -= line_height * 0.5
+            
+            # Check if we need a new page after paragraph
+            if y_position < bottom_margin:
+                c.showPage()
+                c.setFont(font_name, font_size)
+                y_position = top_margin
         
-        # Add a footer explaining PDF limitations
-        y = 30
-        c.setFont("Helvetica", 8)
-        c.drawString(50, y, "Note: This PDF is machine-translated and may contain errors.")
-        y -= 12
-        c.drawString(50, y, "For the best experience with non-Latin languages, please use the audio output.")
-        
+        # Save the PDF
         c.save()
+        logger.info(f"Created translated PDF at {output_path}")
         return output_path
+        
     except Exception as e:
         logger.error(f"Error creating PDF: {str(e)}")
-        raise Exception(f"Error creating PDF: {str(e)}")
+        # Create a simple fallback PDF with just the text
+        try:
+            with open(output_path, 'wb') as f:
+                c = canvas.Canvas(f, pagesize=letter)
+                c.setFont('Helvetica', 10)
+                c.drawString(72, 800, "Error creating formatted PDF. Here is the plain text:")
+                
+                # Split text into smaller chunks
+                chunks = [text[i:i+100] for i in range(0, len(text), 100)]
+                y = 780
+                for chunk in chunks[:200]:  # Limit to first 200 chunks to avoid massive PDFs
+                    if y < 50:
+                        c.showPage()
+                        y = 800
+                    c.drawString(72, y, chunk)
+                    y -= 12
+                
+                c.save()
+                logger.info(f"Created fallback PDF at {output_path}")
+                return output_path
+        except Exception as fallback_error:
+            logger.error(f"Failed to create fallback PDF: {str(fallback_error)}")
+            raise
 
 # Helper function for translation with timeout
 def translate_with_timeout(translator, text, dest, timeout=10):
@@ -415,26 +535,40 @@ def save_file_to_redis(file_path, task_id, file_type):
 def process_pdf(file_content, filename, voice, output_format, user_id, audio_speed=1.0):
     app = create_app()
     with app.app_context():
+        temp_file_path = None
+        audio_files = []
+        output_path = None
+        pdf_output_path = None
+        
         try:
+            # Initialize progress
             update_progress(
                 task_id=process_pdf.request.id,
                 status='initializing',
                 progress=0
             )
+            
+            # Save incoming PDF to temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
                 temp_file.write(file_content)
                 temp_file_path = temp_file.name
+                
+            # Create temporary directory for processing chunks
+            temp_dir = tempfile.mkdtemp(prefix="docecho_")
+            
             try:
+                # Extract text in chunks to preserve memory
                 update_progress(
                     task_id=process_pdf.request.id,
                     status='extracting_text',
-                    progress=20
+                    progress=10
                 )
-                text = ''
-                with open(temp_file_path, 'rb') as file:
-                    pdf_reader = PdfReader(file)
-                    for page in pdf_reader.pages:
-                        text += page.extract_text()
+                
+                # Use improved chunking function that preserves layout and handles larger files
+                text_chunks = extract_text_chunks_from_pdf(temp_file_path, max_chunk_length=1000)
+                
+                # Combine chunks for translation but maintain structure
+                full_text = '\n\n'.join(text_chunks)
                 
                 # Add translation step here
                 update_progress(
@@ -445,62 +579,185 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 
                 # Only translate if the language is not English
                 language_code = voice['language']
-                translated_text = text
+                translated_chunks = []
+                
+                # Get TLD for gTTS
+                tld = language_map.get(language_code, {}).get('tld', 'com')
                 
                 if language_code != 'en':
-                    try:
-                        translator = Translator()
-                        translated_text, error = translate_with_timeout(translator, text, dest=language_code, timeout=60)
-                        if error:
-                            logger.warning(f"Translation error: {error}. Using original text.")
-                            translated_text = text
-                    except Exception as e:
-                        logger.error(f"Error during translation: {str(e)}")
-                        translated_text = text  # Fallback to original text
+                    # For larger texts, break into smaller parts for translation
+                    # This helps with API limits and improves reliability
+                    max_translate_length = 10000  # Characters per translation request
+                    full_translated_text = ""
+                    
+                    for i, chunk in enumerate(text_chunks):
+                        try:
+                            translator = Translator()
+                            chunk_translated, error = translate_with_timeout(translator, chunk, dest=language_code, timeout=60)
+                            
+                            if error:
+                                logger.warning(f"Translation error for chunk {i}: {error}. Using original text.")
+                                translated_chunks.append(chunk)
+                            else:
+                                translated_chunks.append(chunk_translated)
+                                
+                            # Update progress based on translation progress
+                            progress = 30 + (i / len(text_chunks)) * 20
+                            update_progress(
+                                task_id=process_pdf.request.id,
+                                status='translating_text',
+                                progress=progress
+                            )
+                            
+                            # Help with garbage collection
+                            gc.collect()
+                            
+                        except Exception as e:
+                            logger.error(f"Error during translation of chunk {i}: {str(e)}")
+                            translated_chunks.append(chunk)  # Fallback to original text for this chunk
+                    
+                    # Join translated chunks for full text
+                    full_translated_text = '\n\n'.join(translated_chunks)
+                else:
+                    # If no translation needed, use original chunks
+                    translated_chunks = text_chunks
+                    full_translated_text = full_text
                 
                 update_progress(
                     task_id=process_pdf.request.id,
                     status='generating_audio',
-                    progress=40
+                    progress=50
                 )
                 
-                # Use the translated text for audio generation
-                chunks = [translated_text[i:i+5000] for i in range(0, len(translated_text), 5000)]
+                # Process audio in smaller chunks to prevent memory issues
                 audio_files = []
-                for i, chunk in enumerate(chunks):
-                    tts = gTTS(text=chunk, lang=language_code)
-                    audio_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
-                    tts.save(audio_file.name)
-                    if float(audio_speed) != 1.0:
+                audio_chunk_size = 3000  # Characters per audio chunk
+                
+                # Split translated text into audio-sized chunks
+                audio_text_chunks = []
+                for chunk in translated_chunks:
+                    # Further split large chunks for audio processing
+                    if len(chunk) > audio_chunk_size:
+                        # Split at sentence boundaries where possible
+                        sentences = re.split(r'(?<=[.!?])\s+', chunk)
+                        current_audio_chunk = ""
+                        
+                        for sentence in sentences:
+                            if len(current_audio_chunk) + len(sentence) > audio_chunk_size:
+                                if current_audio_chunk:
+                                    audio_text_chunks.append(current_audio_chunk)
+                                current_audio_chunk = sentence
+                            else:
+                                if current_audio_chunk:
+                                    current_audio_chunk += " " + sentence
+                                else:
+                                    current_audio_chunk = sentence
+                                    
+                        if current_audio_chunk:
+                            audio_text_chunks.append(current_audio_chunk)
+                    else:
+                        audio_text_chunks.append(chunk)
+                
+                # Generate audio for each chunk with retry mechanism
+                for i, chunk in enumerate(audio_text_chunks):
+                    # Skip empty chunks
+                    if not chunk.strip():
+                        continue
+                        
+                    # Try up to 3 times to generate audio
+                    max_retries = 3
+                    retry_count = 0
+                    chunk_file_path = None
+                    
+                    while retry_count < max_retries:
                         try:
-                            sound = AudioSegment.from_file(audio_file.name)
-                            sound = sound.speedup(playback_speed=float(audio_speed))
-                            sound.export(audio_file.name, format="mp3")
-                        except Exception as speed_err:
-                            logger.error(f"Error adjusting audio speed: {speed_err}. Using original audio.")
-                            # Continue with original audio if speed adjustment fails
-                    audio_files.append(audio_file.name)
-                    progress = 40 + (i / len(chunks)) * 40
+                            # Generate temporary filename
+                            temp_audio_file = f"chunk_{i}.mp3"
+                            
+                            # Convert text to audio with improved memory handling
+                            chunk_file_path = convert_text_to_audio(
+                                chunk, 
+                                temp_audio_file,
+                                language_code, 
+                                float(audio_speed),
+                                temp_dir,
+                                tld
+                            )
+                            
+                            if os.path.exists(chunk_file_path):
+                                audio_files.append(chunk_file_path)
+                                break  # Success, exit retry loop
+                            else:
+                                raise Exception(f"Audio file was not created")
+                                
+                        except Exception as e:
+                            retry_count += 1
+                            logger.error(f"Error generating audio for chunk {i} (attempt {retry_count}): {str(e)}")
+                            time.sleep(1)  # Brief pause before retry
+                            
+                            if retry_count >= max_retries:
+                                logger.warning(f"Failed to generate audio for chunk {i} after {max_retries} attempts")
+                                # Continue with next chunk instead of failing entire job
+                    
+                    # Update progress
+                    progress = 50 + (i / len(audio_text_chunks)) * 30
                     update_progress(
                         task_id=process_pdf.request.id,
                         status='generating_audio',
                         progress=progress
                     )
+                    
+                    # Help garbage collection
+                    gc.collect()
+                
+                # Check if we have any audio files to combine
+                if not audio_files:
+                    raise Exception("No audio chunks were successfully created")
+                
                 update_progress(
                     task_id=process_pdf.request.id,
                     status='combining_audio',
                     progress=80
                 )
-                combined = AudioSegment.empty()
-                for audio_file in audio_files:
-                    combined += AudioSegment.from_mp3(audio_file)
+                
+                # Setup output directory
                 output_dir = os.path.join(app.config['UPLOAD_FOLDER'], str(user_id))
                 os.makedirs(output_dir, exist_ok=True)
+                
+                # Combine audio files
                 output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.mp3')
-                combined.export(output_path, format='mp3')
+                
+                try:
+                    # Use improved memory-efficient audio combining
+                    concatenate_audio_files(audio_files, output_path)
+                except Exception as e:
+                    logger.error(f"Error combining audio files: {str(e)}")
+                    
+                    # Fallback method if concatenation fails
+                    try:
+                        combined = AudioSegment.empty()
+                        for audio_file in audio_files:
+                            if os.path.exists(audio_file):
+                                segment = AudioSegment.from_mp3(audio_file)
+                                combined += segment
+                                # Clear memory after each file is processed
+                                segment = None
+                                gc.collect()
+                        
+                        combined.export(output_path, format='mp3')
+                        combined = None  # Clear memory
+                        gc.collect()
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback audio combining also failed: {str(fallback_error)}")
+                        raise
+                
+                # Clean up temporary audio files
                 for audio_file in audio_files:
-                    os.unlink(audio_file)
-                os.unlink(temp_file_path)
+                    try:
+                        if os.path.exists(audio_file):
+                            os.unlink(audio_file)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete temporary audio file {audio_file}: {str(e)}")
                 
                 # Save the output files to Redis for download
                 if output_format == 'audio' or output_format == 'both':
@@ -510,8 +767,8 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 if output_format == 'pdf' or output_format == 'both':
                     pdf_output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.pdf')
                     try:
-                        # Use translated text for PDF creation
-                        create_translated_pdf(translated_text, pdf_output_path, language_code)
+                        # Use translated text for PDF creation with improved layout
+                        create_translated_pdf(full_translated_text, pdf_output_path, language_code)
                         save_file_to_redis(pdf_output_path, process_pdf.request.id, 'pdf')
                     except Exception as e:
                         logger.error(f"Error creating PDF: {str(e)}")
@@ -523,11 +780,23 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                     progress=100,
                     audio_file=output_path
                 )
+                
+                # Clean up temporary files
+                if temp_file_path and os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                
+                # Clean up temp directory
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temp directory {temp_dir}: {str(e)}")
+                
                 return {
                     'status': 'completed',
                     'output_path': output_path,
                     'audio_file': output_path
                 }
+                
             except Exception as e:
                 logger.error(f'Error processing PDF: {str(e)}')
                 update_progress(
@@ -536,6 +805,7 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                     error=str(e)
                 )
                 raise
+                
         except Exception as e:
             logger.error(f'Error in process_pdf task: {str(e)}')
             update_progress(
@@ -543,4 +813,21 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 status='error',
                 error=str(e)
             )
+            
+            # Clean up any temporary files
+            try:
+                if temp_file_path and os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                
+                # Clean up any orphaned audio chunks
+                for audio_file in audio_files:
+                    if os.path.exists(audio_file):
+                        os.unlink(audio_file)
+                        
+                # Clean up temp directory if it exists
+                if 'temp_dir' in locals() and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+            except Exception as cleanup_err:
+                logger.error(f"Error during cleanup: {str(cleanup_err)}")
+                
             raise
