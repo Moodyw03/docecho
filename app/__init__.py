@@ -13,6 +13,7 @@ import copy
 from app.extensions import db, login_manager, init_extensions
 from flask_mail import Mail
 from celery_worker import celery
+from flask_cors import CORS
 
 # Background task for cleaning up expired progress records
 def cleanup_expired_progress(app):
@@ -80,6 +81,10 @@ def create_app():
 
     # Initialize other extensions (Mail, LoginManager)
     init_extensions(app)
+
+    # Initialize CORS
+    # Allow requests from the configured BASE_URL (frontend) for all routes
+    CORS(app, origins=[app.config.get('BASE_URL', '*')], supports_credentials=True)
 
     # Create progress directory
     with app.app_context():
@@ -218,8 +223,12 @@ def configure_database(app):
         if os.environ.get('FLY_APP_NAME'):
             raise ValueError("DATABASE_URL environment variable is required in production")
         # Local development fallback
-        database_url = 'sqlite:///instance/app.db'
-        os.makedirs('instance', exist_ok=True)
+        # database_url = 'sqlite:///instance/app.db'
+        # os.makedirs('instance', exist_ok=True)
+        # Use /tmp for potentially fewer permission issues
+        db_path = '/tmp/docecho_app.db'
+        database_url = f'sqlite:///{db_path}'
+        print(f"Using temporary local database: {db_path}")
     
     # Convert postgres:// to postgresql:// for SQLAlchemy 1.4+
     if database_url.startswith("postgres://"):
@@ -249,31 +258,28 @@ def configure_database(app):
         }
 
 def configure_static_folders(app):
-    """Configure static, upload, output, and temp folders"""
-    if os.environ.get('FLY_APP_NAME'):
-        # Fly.io environment
-        STATIC_FOLDER = '/app/data/static'
-    else:
-        STATIC_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
-    
-    app.static_folder = STATIC_FOLDER
+    """Configure upload, output, and temp folders based on environment or defaults."""
+    # Static folder is handled by Flask default or fly.toml [[statics]]
+    # Just ensure Upload/Output/Temp folders are configured
     app.config.update(
         UPLOAD_FOLDER=os.environ.get('UPLOAD_FOLDER', app.config.get('UPLOAD_FOLDER')),
         OUTPUT_FOLDER=os.environ.get('OUTPUT_FOLDER', app.config.get('OUTPUT_FOLDER')),
         TEMP_FOLDER=os.environ.get('TEMP_FOLDER', app.config.get('TEMP_FOLDER'))
     )
-    
-    # Handle static files for Fly.io environment
-    if os.environ.get('FLY_APP_NAME'):
-        try:
-            os.makedirs(STATIC_FOLDER, exist_ok=True)
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
-            os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
-        except Exception as e:
-            app.logger.error(f"Directory creation failed: {str(e)}")
-            # Fallback to app directory
-            app.static_folder = os.path.join(os.path.dirname(__file__), 'static')
+
+    # Ensure directories exist if running locally or if needed
+    # In Fly.io, these should point to the mounted volume /app/data/*
+    # The volume mount should handle creation, but making sure doesn't hurt.
+    try:
+        # Use os.makedirs for safety, even though Fly mount should exist
+        if app.config.get('UPLOAD_FOLDER'):
+             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        if app.config.get('OUTPUT_FOLDER'):
+             os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+        if app.config.get('TEMP_FOLDER'):
+             os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
+    except Exception as e:
+        app.logger.error(f"Error ensuring data directories exist: {str(e)}")
 
 def register_blueprints_and_models(app):
     """Register blueprints and initialize models"""
