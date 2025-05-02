@@ -135,7 +135,7 @@ def extract_text_chunks_from_pdf(pdf_path, max_chunk_length=500):
         logger.error(f"Error extracting text from PDF: {str(e)}")
         raise Exception(f"Error extracting text from PDF: {e}")
 
-def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, tld='com'):
+def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, tld='com', src='auto'):
     try:
         # Use the provided temp_directory instead of os.getcwd()
         # temp_dir = os.path.join(os.getcwd(), 'temp') # Remove this line
@@ -151,7 +151,7 @@ def convert_text_to_audio(text, output_filename, voice, speed, temp_directory, t
             # Apply rate limiting before translation
             translate_rate_limiter.wait_if_needed()
             
-            translated_text, error = translate_with_timeout(translator, text, dest=voice, timeout=30)
+            translated_text, error = translate_with_timeout(translator, text, dest=voice, src=src, timeout=30)
             if error:
                 logger.warning(f"Translation failed, using original text: {error}")
                 translated_text = text
@@ -483,7 +483,7 @@ def create_translated_pdf(text, output_path, language_code='en'):
             raise
 
 # Helper function for translation with timeout
-def translate_with_timeout(translator, text, dest, timeout=10):
+def translate_with_timeout(translator, text, dest, timeout=10, src='auto'):
     result = None
     error = None
     
@@ -493,8 +493,8 @@ def translate_with_timeout(translator, text, dest, timeout=10):
             # Wait if we're about to hit rate limits
             translate_rate_limiter.wait_if_needed()
             
-            # Now make the translation request
-            result = translator.translate(text, dest=dest).text
+            # Now make the translation request with source language
+            result = translator.translate(text, src=src, dest=dest).text
         except AttributeError as e:
             if "'NoneType' object has no attribute 'group'" in str(e):
                 error = Exception("Translation API error: token retrieval failed. This may be due to an API rate limit or a change in the translation service. Please try again later or contact support if the issue persists.")
@@ -605,7 +605,39 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 # Get TLD for gTTS
                 tld = language_map.get(language_code, {}).get('tld', 'com')
                 
-                if language_code != 'en':
+                # Detect source language for better translation
+                source_language = 'auto'
+                detected = False
+                
+                # Get the first substantial chunk to try to detect language
+                detection_text = ""
+                for chunk in text_chunks:
+                    if len(chunk.strip()) > 50:
+                        detection_text = chunk
+                        break
+                
+                # Try to detect the source language
+                if detection_text:
+                    try:
+                        detector = Translator()
+                        detection = detector.detect(detection_text)
+                        if detection and hasattr(detection, 'lang'):
+                            source_language = detection.lang
+                            detected = True
+                            logger.info(f"Detected source language: {source_language}")
+                    except Exception as detect_err:
+                        logger.warning(f"Language detection failed: {detect_err}")
+                
+                # Determine if translation is needed
+                needs_translation = True
+                
+                # If target is English and source is also English, no translation needed
+                if language_code == 'en' and (source_language == 'en' or not detected):
+                    needs_translation = False
+                    logger.info("Source text appears to be in English, skipping translation to English")
+                
+                # Only perform translation if needed
+                if needs_translation:
                     # For larger texts, break into smaller parts for translation
                     # This helps with API limits and improves reliability
                     max_translate_length = 10000  # Characters per translation request
@@ -614,7 +646,13 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                     for i, chunk in enumerate(text_chunks):
                         try:
                             translator = Translator()
-                            chunk_translated, error = translate_with_timeout(translator, chunk, dest=language_code, timeout=60)
+                            chunk_translated, error = translate_with_timeout(
+                                translator, 
+                                chunk, 
+                                dest=language_code, 
+                                src=source_language,
+                                timeout=60
+                            )
                             
                             if error:
                                 logger.warning(f"Translation error for chunk {i}: {error}. Using original text.")
@@ -641,6 +679,7 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                     full_translated_text = '\n\n'.join(translated_chunks)
                 else:
                     # If no translation needed, use original chunks
+                    logger.info("Skipping translation, using original text")
                     translated_chunks = text_chunks
                     full_translated_text = full_text
                 
@@ -702,7 +741,8 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                                 language_code, 
                                 float(audio_speed),
                                 temp_dir,
-                                tld
+                                tld,
+                                src=source_language
                             )
                             
                             if os.path.exists(chunk_file_path):
