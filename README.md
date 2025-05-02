@@ -14,18 +14,20 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
 - **Responsive Design**: Modern, glass-like UI that works on desktop and mobile devices
 - **Async Processing**: Background task processing with Celery and Redis
 - **Scalable Architecture**: Separated web and worker processes for better performance
+- **Memory Optimization**: Advanced garbage collection and memory management
 
 ## Technical Stack
 
 - **Backend**: Flask (Python 3.9+)
 - **Database**: PostgreSQL (production), SQLite (development)
-- **Task Queue**: Celery with Redis as broker
+- **Task Queue**: Celery with Redis as broker and backend
 - **PDF Processing**: PyPDF2, ReportLab
 - **Text-to-Speech**: gTTS (Google Text-to-Speech)
 - **Translation**: Google Translate API
 - **Payment Processing**: Stripe
 - **Email Service**: SendGrid
 - **Deployment**: Fly.io with Docker containerization
+- **Storage**: Persistent volume storage for uploads and outputs
 
 ## Installation
 
@@ -66,6 +68,7 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
    JWT_SECRET_KEY=your_jwt_secret
    DATABASE_URL=sqlite:///instance/app.db  # For local development
    REDIS_URL=redis://localhost:6379/0  # For Celery task queue
+   LANGUAGES_SUPPORTED=en,en-uk,pt,es,fr,de,it,zh-CN,ja,ru,ar,hi,ko,tr,nl,pl
 
    # Stripe Configuration (for payment processing)
    STRIPE_PUBLIC_KEY=your_stripe_public_key
@@ -161,6 +164,15 @@ The application is configured for deployment on [Fly.io](https://fly.io/) with t
 - **Persistent Storage**: 1GB volume mounted at `/app/data`
 - **Database**: PostgreSQL on Fly.io
 - **Redis**: Redis instance on Fly.io for task queue and result storage
+- **VM Size**: shared-cpu-1x with 1GB memory
+
+The deployment configuration in `fly.toml` includes:
+
+```toml
+[processes]
+  web = "gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 --worker-class gthread wsgi:app"
+  worker = "celery -A celery_worker.celery worker --loglevel=INFO -c 2 --pool=solo"
+```
 
 For a complete step-by-step guide, please refer to the [DEPLOYMENT_FLY.md](DEPLOYMENT_FLY.md) file, which includes:
 
@@ -192,8 +204,57 @@ For production deployment on Fly.io, you'll need to set the following environmen
 - `STRIPE_SECRET_KEY=<your-stripe-secret-key>`
 - `STRIPE_WEBHOOK_SECRET=<your-stripe-webhook-secret>`
 - `FRONTEND_URL=https://<your-app-name>.fly.dev`
+- `LANGUAGES_SUPPORTED=en,en-uk,pt,es,fr,de,it,zh-CN,ja,ru,ar,hi,ko,tr,nl,pl`
+- `OUTPUT_FOLDER=/app/data/output`
+- `UPLOAD_FOLDER=/app/data/uploads`
+- `TEMP_FOLDER=/app/data/temp`
 
 These can be set using the `fly secrets set` command as detailed in the deployment guide.
+
+## Advanced Configuration
+
+### Celery Worker Configuration
+
+The Celery worker is configured in `celery_worker.py` with optimized settings:
+
+```python
+celery.conf.update(
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+    worker_max_tasks_per_child=1,  # Restart worker after each task
+    worker_prefetch_multiplier=1,  # Only prefetch one task at a time
+    task_acks_late=True,  # Only acknowledge task after it's completed
+    task_reject_on_worker_lost=True,  # Reject task if worker dies
+    task_track_started=True,  # Track when task starts
+    task_time_limit=3600,  # 1 hour time limit
+    task_soft_time_limit=3300,  # 55 minutes soft time limit
+)
+```
+
+### Gunicorn Configuration
+
+The Gunicorn server is configured in `gunicorn_config.py` with production-ready settings:
+
+```python
+workers = int(os.getenv('GUNICORN_WORKERS', '2'))
+threads = int(os.getenv('GUNICORN_THREADS', '4'))
+timeout = int(os.getenv('GUNICORN_TIMEOUT', '300'))
+keepalive = 5
+max_requests = 500
+max_requests_jitter = 50
+worker_class = 'sync'
+```
+
+### Memory Management
+
+The application uses optimized garbage collection settings to improve memory management:
+
+```python
+gc.set_threshold(100, 5, 5)  # Default is (700, 10, 10)
+```
 
 ## Usage
 

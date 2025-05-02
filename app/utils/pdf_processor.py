@@ -63,10 +63,10 @@ language_map = {
     "tr": {"lang": "tr", "tld": "com.tr"},    # Turkish
     "nl": {"lang": "nl", "tld": "nl"},        # Dutch
     "pl": {"lang": "pl", "tld": "pl"},         # Polish
-    "ja": {"lang": "ja", "tld": "co.jp", "audio_only": True},  # Japanese
-    "zh-CN": {"lang": "zh-CN", "tld": "com", "audio_only": True},  # Chinese (Simplified)
+    "ja": {"lang": "ja", "tld": "co.jp"},     # Japanese - now supports PDF
+    "zh-CN": {"lang": "zh-CN", "tld": "com"}, # Chinese (Simplified) - now supports PDF
     "ar": {"lang": "ar", "tld": "com", "audio_only": True},    # Arabic 
-    "ko": {"lang": "ko", "tld": "co.kr", "audio_only": True}   # Korean
+    "ko": {"lang": "ko", "tld": "co.kr"}      # Korean - now supports PDF
 }
 
 # Smaller chunk size for better processing
@@ -338,18 +338,58 @@ def create_translated_pdf(text, output_path, language_code='en'):
         
         # Unicode font registration for better language support
         try:
-            # Try to register a Unicode font that supports many languages
+            # Create fonts directory if it doesn't exist
             font_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'fonts')
             os.makedirs(font_path, exist_ok=True)
             
-            # Check if we have DejaVuSans available, which supports many languages
-            # First, check if we already have the font
-            dejavu_path = os.path.join(font_path, 'DejaVuSans.ttf')
+            # Define font files and URLs
+            font_files = {
+                'dejavu': {
+                    'path': os.path.join(font_path, 'DejaVuSans.ttf'),
+                    'url': "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+                    'name': 'DejaVuSans'
+                },
+                'noto_sans_cjk_jp': {
+                    'path': os.path.join(font_path, 'NotoSansCJKjp-Regular.otf'),
+                    'url': "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf",
+                    'name': 'NotoSansCJKjp'
+                },
+                'noto_sans_cjk_sc': {
+                    'path': os.path.join(font_path, 'NotoSansCJKsc-Regular.otf'),
+                    'url': "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+                    'name': 'NotoSansCJKsc'
+                },
+                'noto_sans_cjk_kr': {
+                    'path': os.path.join(font_path, 'NotoSansCJKkr-Regular.otf'),
+                    'url': "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf",
+                    'name': 'NotoSansCJKkr'
+                },
+                'noto_sans_arabic': {
+                    'path': os.path.join(font_path, 'NotoSansArabic-Regular.ttf'),
+                    'url': "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansArabic/NotoSansArabic-Regular.ttf",
+                    'name': 'NotoSansArabic'
+                }
+            }
             
+            # Map language codes to the appropriate font
+            language_font_map = {
+                'ja': 'noto_sans_cjk_jp',
+                'zh-CN': 'noto_sans_cjk_sc',
+                'ko': 'noto_sans_cjk_kr',
+                'ar': 'noto_sans_arabic',
+            }
+            
+            # Determine which font to use based on language
+            font_key = language_font_map.get(language_code, 'dejavu')
+            
+            # Check if we have DejaVuSans available, which is our default fallback
+            # First, check if we already have the font
+            dejavu_path = font_files['dejavu']['path']
+            
+            # Download DejaVu if needed as our base fallback font
             if not os.path.exists(dejavu_path):
-                # If not, try to download it
                 import urllib.request
-                font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+                font_url = font_files['dejavu']['url']
                 try:
                     urllib.request.urlretrieve(font_url, dejavu_path)
                     logger.info(f"Downloaded DejaVuSans font to {dejavu_path}")
@@ -357,8 +397,25 @@ def create_translated_pdf(text, output_path, language_code='en'):
                     logger.warning(f"Could not download DejaVuSans font: {e}")
                     # Continue with default fonts
             
-            # Register the font if it exists
-            if os.path.exists(dejavu_path):
+            # For CJK and Arabic languages, try to use the appropriate Noto font
+            if language_code in language_font_map:
+                if not os.path.exists(font_files[font_key]['path']):
+                    import urllib.request
+                    try:
+                        logger.info(f"Downloading {font_files[font_key]['name']} font for {language_code}")
+                        urllib.request.urlretrieve(font_files[font_key]['url'], font_files[font_key]['path'])
+                        logger.info(f"Downloaded {font_files[font_key]['name']} font successfully")
+                    except Exception as e:
+                        logger.warning(f"Could not download {font_files[font_key]['name']} font: {e}")
+                        # Fallback to DejaVu
+                        font_key = 'dejavu'
+            
+            # Register the appropriate font
+            if font_key in font_files and os.path.exists(font_files[font_key]['path']):
+                pdfmetrics.registerFont(TTFont(font_files[font_key]['name'], font_files[font_key]['path']))
+                font_name = font_files[font_key]['name']
+                logger.info(f"Using {font_name} font for {language_code} PDF generation")
+            elif os.path.exists(dejavu_path):
                 pdfmetrics.registerFont(TTFont('DejaVuSans', dejavu_path))
                 font_name = 'DejaVuSans'
                 logger.info(f"Using DejaVuSans font for PDF generation")
@@ -366,6 +423,7 @@ def create_translated_pdf(text, output_path, language_code='en'):
                 # Fallback to built-in fonts
                 font_name = 'Helvetica'
                 logger.info(f"Using Helvetica font for PDF generation")
+                
         except Exception as font_error:
             logger.warning(f"Error registering custom font: {font_error}")
             # Fallback to built-in font

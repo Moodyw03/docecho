@@ -425,10 +425,10 @@
           <option value="tr">Turkish</option>
           <option value="nl">Dutch</option>
           <option value="pl">Polish</option>
-          <option value="ja">Japanese (Audio Only)</option>
-          <option value="zh-CN">Chinese (Audio Only)</option>
+          <option value="ja">Japanese</option>
+          <option value="zh-CN">Chinese</option>
           <option value="ar">Arabic (Audio Only)</option>
-          <option value="ko">Korean (Audio Only)</option>
+          <option value="ko">Korean</option>
         </select>
         <div id="font-warning" style="display: none; color: #e67e22; font-size: 0.8rem; margin-top: 0.3rem; padding: 0.3rem; background: rgba(230, 126, 34, 0.1); border-radius: 5px;">
           Note: This language may have font rendering issues in PDF output. Audio should work correctly.
@@ -470,7 +470,7 @@
       // Highlight audio-only languages in the dropdown
       const voiceSelect = document.getElementById("voice");
       if (voiceSelect) {
-        const audioOnlyOptions = ['ja', 'zh-CN', 'ar', 'ko'];
+        const audioOnlyOptions = ['ar']; // Only Arabic needs special handling now
         for (let i = 0; i < voiceSelect.options.length; i++) {
           if (audioOnlyOptions.includes(voiceSelect.options[i].value)) {
             // Apply styling to indicate audio-only
