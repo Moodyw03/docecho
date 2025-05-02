@@ -705,24 +705,47 @@
                       hiddenFramesDiv.style.display = 'none';
                       document.body.appendChild(hiddenFramesDiv);
                       
+                      // Track downloads to prevent duplicates using a global property
+                      window.downloadedUrls = new Set();
+                      
                       // Function to create and use a hidden iframe for download
                       function downloadWithIframe(url, frameId) {
-                          // Create iframe
-                          const iframe = document.createElement('iframe');
-                          iframe.id = frameId;
-                          iframe.style.display = 'none';
-                          hiddenFramesDiv.appendChild(iframe);
-                          // Set source to trigger download
+                          // Skip if this URL has already been downloaded
+                          if (window.downloadedUrls.has(url)) {
+                              console.log('Skipping duplicate download: ' + url);
+                              return;
+                          }
+                          
+                          // Add to downloaded URLs set
+                          window.downloadedUrls.add(url);
+                          
+                          // Create or get existing iframe
+                          let iframe = document.getElementById(frameId);
+                          if (!iframe) {
+                              iframe = document.createElement('iframe');
+                              iframe.id = frameId;
+                              iframe.style.display = 'none';
+                              hiddenFramesDiv.appendChild(iframe);
+                          }
+                          // Set the source to trigger download
                           iframe.src = url;
+                          console.log('Downloading: ' + url);
                       }
                       
-                      // Download audio first
-                      downloadWithIframe('/download/' + taskId + '/audio', 'audioFallbackFrame');
+                      // Only trigger downloads once
+                      let downloadsTriggered = false;
                       
-                      // Download PDF after a short delay
-                      setTimeout(function() {
-                          downloadWithIframe('/download/' + taskId + '/pdf', 'pdfFallbackFrame');
-                      }, 1500);
+                      if (!downloadsTriggered) {
+                          downloadsTriggered = true;
+                          
+                          // Download audio first
+                          downloadWithIframe('/download/' + taskId + '/audio', 'audioDownloadFrame');
+                          
+                          // Download PDF after a short delay
+                          setTimeout(function() {
+                              downloadWithIframe('/download/' + taskId + '/pdf', 'pdfDownloadFrame');
+                          }, 1500);
+                      }
                   } else {
                       // For single format, create one download button as before
                       const directDownloadUrl = '/download/' + taskId + '/' + selectedFormat;
@@ -1013,34 +1036,13 @@
                                         }
                                         
                                         // Add a success message
-                                        statusMessage.textContent = 'Files ready! Downloading both formats...';
+                                        statusMessage.textContent = 'Files ready! Your downloads should have started automatically.';
                                         
-                                        // Create a hidden container for download iframes
-                                        const hiddenFramesDiv = document.createElement('div');
-                                        hiddenFramesDiv.style.display = 'none';
-                                        document.body.appendChild(hiddenFramesDiv);
-                                        
-                                        // Function to create and use a hidden iframe for download
-                                        function downloadWithIframe(url, frameId) {
-                                            // Create or get existing iframe
-                                            let iframe = document.getElementById(frameId);
-                                            if (!iframe) {
-                                                iframe = document.createElement('iframe');
-                                                iframe.id = frameId;
-                                                iframe.style.display = 'none';
-                                                hiddenFramesDiv.appendChild(iframe);
-                                            }
-                                            // Set the source to trigger download
-                                            iframe.src = url;
+                                        // Skip automatic downloads if they were already triggered earlier
+                                        if (typeof window.downloadedUrls === 'undefined') {
+                                            console.log('Downloads already triggered in initial phase. Skipping automatic downloads.');
+                                            // No need to trigger downloads again
                                         }
-                                        
-                                        // Download audio first
-                                        downloadWithIframe('/download/' + taskId + '/audio', 'audioDownloadFrame');
-                                        
-                                        // Download PDF after a short delay
-                                        setTimeout(function() {
-                                            downloadWithIframe('/download/' + taskId + '/pdf', 'pdfDownloadFrame');
-                                        }, 1500);
                                     } else {
                                         // Original single-format download handling
                                         const downloadUrl = '/download/' + taskId + '/' + outputFormat;
