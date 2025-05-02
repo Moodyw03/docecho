@@ -946,7 +946,7 @@
                                     break;
                                 case 'translating_text':
                                     const selectedLang = voiceSelect ? voiceSelect.value : '';
-                                    const isAudioOnly = ['ja', 'zh-CN', 'ar', 'ko'].includes(selectedLang);
+                                    const isAudioOnly = ['ar'].includes(selectedLang); // Only Arabic is audio-only now
                                     if (isAudioOnly) {
                                         statusMessage.textContent = 'Translating content to ' + getLanguageName() + ' for audio...';
                                     } else {
@@ -1157,7 +1157,7 @@
         const selectedLanguage = voiceSelect.value;
         
         // Define languages that only support audio (no PDF)
-        const audioOnlyLanguages = ['ja', 'zh-CN', 'ar', 'ko'];
+        const audioOnlyLanguages = ['ar']; // Only Arabic needs special handling now
         const isAudioOnlyLanguage = audioOnlyLanguages.includes(selectedLanguage);
         
         // Enable/disable output format options based on language
