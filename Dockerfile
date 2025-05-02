@@ -47,11 +47,8 @@ COPY . /app/
 RUN mkdir -p /app/app/static/uploads /app/app/static/output /app/app/static/progress /app/app/static/temp /app/app/static/fonts /app/data \
     && chown -R appuser:appuser /app
 
-# Copy font files to the container
-COPY app/static/fonts/NotoSansJP-Regular.ttf /app/app/static/fonts/
-COPY app/static/fonts/NotoSansSC-Regular.ttf /app/app/static/fonts/
-COPY app/static/fonts/NotoSansKR-Regular.ttf /app/app/static/fonts/
-COPY app/static/fonts/NotoSans-Regular.ttf /app/app/static/fonts/
+# Copy the font files that exist
+COPY app/static/fonts/* /app/app/static/fonts/
 
 # Ensure font files are readable
 RUN chmod 644 /app/app/static/fonts/*
