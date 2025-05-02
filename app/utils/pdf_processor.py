@@ -719,148 +719,167 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 
                 # Process audio in smaller chunks to prevent memory issues
                 audio_files = []
-                audio_chunk_size = 3000  # Characters per audio chunk
                 
-                # Split translated text into audio-sized chunks
-                audio_text_chunks = []
-                for chunk in translated_chunks:
-                    # Further split large chunks for audio processing
-                    if len(chunk) > audio_chunk_size:
-                        # Split at sentence boundaries where possible
-                        sentences = re.split(r'(?<=[.!?])\s+', chunk)
-                        current_audio_chunk = ""
-                        
-                        for sentence in sentences:
-                            if len(current_audio_chunk) + len(sentence) > audio_chunk_size:
-                                if current_audio_chunk:
-                                    audio_text_chunks.append(current_audio_chunk)
-                                current_audio_chunk = sentence
-                            else:
-                                if current_audio_chunk:
-                                    current_audio_chunk += " " + sentence
-                                else:
+                # Only generate audio if requested in output_format
+                if output_format == 'audio' or output_format == 'both':
+                    logger.info(f"Generating audio for output format: {output_format}")
+                    audio_chunk_size = 3000  # Characters per audio chunk
+                    
+                    # Split translated text into audio-sized chunks
+                    audio_text_chunks = []
+                    for chunk in translated_chunks:
+                        # Further split large chunks for audio processing
+                        if len(chunk) > audio_chunk_size:
+                            # Split at sentence boundaries where possible
+                            sentences = re.split(r'(?<=[.!?])\s+', chunk)
+                            current_audio_chunk = ""
+                            
+                            for sentence in sentences:
+                                if len(current_audio_chunk) + len(sentence) > audio_chunk_size:
+                                    if current_audio_chunk:
+                                        audio_text_chunks.append(current_audio_chunk)
                                     current_audio_chunk = sentence
-                                    
-                        if current_audio_chunk:
-                            audio_text_chunks.append(current_audio_chunk)
-                    else:
-                        audio_text_chunks.append(chunk)
-                
-                # Generate audio for each chunk with retry mechanism
-                for i, chunk in enumerate(audio_text_chunks):
-                    # Skip empty chunks
-                    if not chunk.strip():
-                        continue
+                                else:
+                                    if current_audio_chunk:
+                                        current_audio_chunk += " " + sentence
+                                    else:
+                                        current_audio_chunk = sentence
+                                        
+                            if current_audio_chunk:
+                                audio_text_chunks.append(current_audio_chunk)
+                        else:
+                            audio_text_chunks.append(chunk)
+                    
+                    # Generate audio for each chunk with retry mechanism
+                    for i, chunk in enumerate(audio_text_chunks):
+                        # Skip empty chunks
+                        if not chunk.strip():
+                            continue
+                            
+                        # Try up to 3 times to generate audio
+                        max_retries = 3
+                        retry_count = 0
+                        chunk_file_path = None
                         
-                    # Try up to 3 times to generate audio
-                    max_retries = 3
-                    retry_count = 0
-                    chunk_file_path = None
-                    
-                    # For direct text-to-speech (no translation), use source_language as voice param
-                    tts_language = language_code
-                    
-                    # If target is English, make sure we're using English voice for TTS
-                    # This fixes an issue where source language is used for English output
-                    if language_code == 'en':
-                        tts_language = 'en'
-                        logger.info("Using English voice for TTS output")
-                    
-                    while retry_count < max_retries:
-                        try:
-                            # Generate temporary filename
-                            temp_audio_file = f"chunk_{i}.mp3"
-                            
-                            # Convert text to audio with improved memory handling
-                            chunk_file_path = convert_text_to_audio(
-                                chunk, 
-                                temp_audio_file,
-                                tts_language, 
-                                float(audio_speed),
-                                temp_dir,
-                                tld,
-                                src=source_language
-                            )
-                            
-                            if os.path.exists(chunk_file_path):
-                                audio_files.append(chunk_file_path)
-                                break  # Success, exit retry loop
-                            else:
-                                raise Exception(f"Audio file was not created")
+                        # For direct text-to-speech (no translation), use source_language as voice param
+                        tts_language = language_code
+                        
+                        # If target is English, make sure we're using English voice for TTS
+                        # This fixes an issue where source language is used for English output
+                        if language_code == 'en':
+                            tts_language = 'en'
+                            logger.info("Using English voice for TTS output")
+                        
+                        while retry_count < max_retries:
+                            try:
+                                # Generate temporary filename
+                                temp_audio_file = f"chunk_{i}.mp3"
                                 
-                        except Exception as e:
-                            retry_count += 1
-                            logger.error(f"Error generating audio for chunk {i} (attempt {retry_count}): {str(e)}")
-                            time.sleep(1)  # Brief pause before retry
-                            
-                            if retry_count >= max_retries:
-                                logger.warning(f"Failed to generate audio for chunk {i} after {max_retries} attempts")
-                                # Continue with next chunk instead of failing entire job
+                                # Convert text to audio with improved memory handling
+                                chunk_file_path = convert_text_to_audio(
+                                    chunk, 
+                                    temp_audio_file,
+                                    tts_language, 
+                                    float(audio_speed),
+                                    temp_dir,
+                                    tld,
+                                    src=source_language
+                                )
+                                
+                                if os.path.exists(chunk_file_path):
+                                    audio_files.append(chunk_file_path)
+                                    break  # Success, exit retry loop
+                                else:
+                                    raise Exception(f"Audio file was not created")
+                                    
+                            except Exception as e:
+                                retry_count += 1
+                                logger.error(f"Error generating audio for chunk {i} (attempt {retry_count}): {str(e)}")
+                                time.sleep(1)  # Brief pause before retry
+                                
+                                if retry_count >= max_retries:
+                                    logger.warning(f"Failed to generate audio for chunk {i} after {max_retries} attempts")
+                                    # Continue with next chunk instead of failing entire job
+                        
+                        # Update progress
+                        progress = 50 + (i / len(audio_text_chunks)) * 30
+                        update_progress(
+                            task_id=process_pdf.request.id,
+                            status='generating_audio',
+                            progress=progress
+                        )
+                        
+                        # Help garbage collection
+                        gc.collect()
                     
-                    # Update progress
-                    progress = 50 + (i / len(audio_text_chunks)) * 30
+                    # Check if we have any audio files to combine (only if audio was requested)
+                    if not audio_files and (output_format == 'audio' or output_format == 'both'):
+                        raise Exception("No audio chunks were successfully created")
+                    
                     update_progress(
                         task_id=process_pdf.request.id,
-                        status='generating_audio',
-                        progress=progress
+                        status='combining_audio',
+                        progress=80
                     )
                     
-                    # Help garbage collection
-                    gc.collect()
-                
-                # Check if we have any audio files to combine
-                if not audio_files:
-                    raise Exception("No audio chunks were successfully created")
-                
-                update_progress(
-                    task_id=process_pdf.request.id,
-                    status='combining_audio',
-                    progress=80
-                )
-                
-                # Setup output directory
-                output_dir = os.path.join(app.config['UPLOAD_FOLDER'], str(user_id))
-                os.makedirs(output_dir, exist_ok=True)
-                
-                # Combine audio files
-                output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.mp3')
-                
-                try:
-                    # Use improved memory-efficient audio combining
-                    concatenate_audio_files(audio_files, output_path)
-                except Exception as e:
-                    logger.error(f"Error combining audio files: {str(e)}")
+                    # Setup output directory
+                    output_dir = os.path.join(app.config['UPLOAD_FOLDER'], str(user_id))
+                    os.makedirs(output_dir, exist_ok=True)
                     
-                    # Fallback method if concatenation fails
+                    # Combine audio files
+                    output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.mp3')
+                    
                     try:
-                        combined = AudioSegment.empty()
-                        for audio_file in audio_files:
-                            if os.path.exists(audio_file):
-                                segment = AudioSegment.from_mp3(audio_file)
-                                combined += segment
-                                # Clear memory after each file is processed
-                                segment = None
-                                gc.collect()
-                        
-                        combined.export(output_path, format='mp3')
-                        combined = None  # Clear memory
-                        gc.collect()
-                    except Exception as fallback_error:
-                        logger.error(f"Fallback audio combining also failed: {str(fallback_error)}")
-                        raise
-                
-                # Clean up temporary audio files
-                for audio_file in audio_files:
-                    try:
-                        if os.path.exists(audio_file):
-                            os.unlink(audio_file)
+                        # Use improved memory-efficient audio combining
+                        concatenate_audio_files(audio_files, output_path)
                     except Exception as e:
-                        logger.warning(f"Failed to delete temporary audio file {audio_file}: {str(e)}")
-                
-                # Save the output files to Redis for download
-                if output_format == 'audio' or output_format == 'both':
-                    save_file_to_redis(output_path, process_pdf.request.id, 'audio')
-                
+                        logger.error(f"Error combining audio files: {str(e)}")
+                        
+                        # Fallback method if concatenation fails
+                        try:
+                            combined = AudioSegment.empty()
+                            for audio_file in audio_files:
+                                if os.path.exists(audio_file):
+                                    segment = AudioSegment.from_mp3(audio_file)
+                                    combined += segment
+                                    # Clear memory after each file is processed
+                                    segment = None
+                                    gc.collect()
+                            
+                            combined.export(output_path, format='mp3')
+                            combined = None  # Clear memory
+                            gc.collect()
+                        except Exception as fallback_error:
+                            if output_format == 'both':
+                                logger.error(f"Fallback audio combining also failed: {str(fallback_error)}")
+                                raise
+                            elif output_format == 'audio':
+                                raise Exception(f"Failed to create audio: {str(fallback_error)}")
+                            # If PDF only, continue without audio
+                    
+                    # Clean up temporary audio files
+                    for audio_file in audio_files:
+                        try:
+                            if os.path.exists(audio_file):
+                                os.unlink(audio_file)
+                        except Exception as e:
+                            logger.warning(f"Failed to delete temporary audio file {audio_file}: {str(e)}")
+                    
+                    # Save the output files to Redis for download
+                    if output_format == 'audio' or output_format == 'both':
+                        save_file_to_redis(output_path, process_pdf.request.id, 'audio')
+                else:
+                    # Skip audio generation for PDF-only output
+                    logger.info("Skipping audio generation for PDF-only output")
+                    update_progress(
+                        task_id=process_pdf.request.id,
+                        status='generating_pdf',
+                        progress=80
+                    )
+                    # Define output directory for PDF file
+                    output_dir = os.path.join(app.config['UPLOAD_FOLDER'], str(user_id))
+                    os.makedirs(output_dir, exist_ok=True)
+                    
                 # Handle PDF output if requested
                 if output_format == 'pdf' or output_format == 'both':
                     pdf_output_path = os.path.join(output_dir, f'{os.path.splitext(filename)[0]}.pdf')
