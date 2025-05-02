@@ -29,6 +29,22 @@ DocEcho is a web application that converts PDF documents to audio, allowing user
 - **Deployment**: Fly.io with Docker containerization
 - **Storage**: Persistent volume storage for uploads and outputs
 
+## Unicode and CJK Support
+
+DocEcho supports multiple languages including CJK (Chinese, Japanese, Korean) for both audio and PDF output. This is achieved through:
+
+- **Unicode-Compatible Fonts**: Noto Sans CJK for CJK languages and DejaVu Sans for other Unicode characters
+- **Font Registration**: Custom font handling with ReportLab's TTFont system
+- **Automatic Language Detection**: PDF generation automatically selects the appropriate font based on the target language
+- **Multilingual Text Processing**: Proper text extraction and handling across languages
+
+For proper deployment, ensure the following fonts are included in your `app/static/fonts` directory:
+
+- `NotoSansCJK-Regular.ttc` for CJK languages
+- `DejaVuSans.ttf` for extended Unicode support
+
+These fonts are pre-installed in the Docker container for Fly.io deployment.
+
 ## Installation
 
 ### Prerequisites

@@ -338,96 +338,45 @@ def create_translated_pdf(text, output_path, language_code='en'):
         
         # Unicode font registration for better language support
         try:
-            # Create fonts directory if it doesn't exist
+            # Path to fonts directory
             font_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'fonts')
-            os.makedirs(font_path, exist_ok=True)
             
-            # Define font files and URLs
-            font_files = {
-                'dejavu': {
-                    'path': os.path.join(font_path, 'DejaVuSans.ttf'),
-                    'url': "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
-                    'name': 'DejaVuSans'
-                },
-                'noto_sans_cjk_jp': {
-                    'path': os.path.join(font_path, 'NotoSansCJKjp-Regular.otf'),
-                    'url': "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf",
-                    'name': 'NotoSansCJKjp'
-                },
-                'noto_sans_cjk_sc': {
-                    'path': os.path.join(font_path, 'NotoSansCJKsc-Regular.otf'),
-                    'url': "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
-                    'name': 'NotoSansCJKsc'
-                },
-                'noto_sans_cjk_kr': {
-                    'path': os.path.join(font_path, 'NotoSansCJKkr-Regular.otf'),
-                    'url': "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf",
-                    'name': 'NotoSansCJKkr'
-                },
-                'noto_sans_arabic': {
-                    'path': os.path.join(font_path, 'NotoSansArabic-Regular.ttf'),
-                    'url': "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansArabic/NotoSansArabic-Regular.ttf",
-                    'name': 'NotoSansArabic'
-                }
-            }
-            
-            # Map language codes to the appropriate font
+            # Language-specific font mapping
             language_font_map = {
-                'ja': 'noto_sans_cjk_jp',
-                'zh-CN': 'noto_sans_cjk_sc',
-                'ko': 'noto_sans_cjk_kr',
-                'ar': 'noto_sans_arabic',
+                'ja': {'file': 'NotoSansCJKjp-Regular.otf', 'name': 'NotoSansCJKjp'},
+                'zh-CN': {'file': 'NotoSansCJKsc-Regular.otf', 'name': 'NotoSansCJKsc'},
+                'ko': {'file': 'NotoSansCJKkr-Regular.otf', 'name': 'NotoSansCJKkr'},
             }
             
-            # Determine which font to use based on language
-            font_key = language_font_map.get(language_code, 'dejavu')
+            # Register and use appropriate font based on language
+            font_name = 'Helvetica'  # Default fallback
             
-            # Check if we have DejaVuSans available, which is our default fallback
-            # First, check if we already have the font
-            dejavu_path = font_files['dejavu']['path']
-            
-            # Download DejaVu if needed as our base fallback font
-            if not os.path.exists(dejavu_path):
-                import urllib.request
-                font_url = font_files['dejavu']['url']
-                try:
-                    urllib.request.urlretrieve(font_url, dejavu_path)
-                    logger.info(f"Downloaded DejaVuSans font to {dejavu_path}")
-                except Exception as e:
-                    logger.warning(f"Could not download DejaVuSans font: {e}")
-                    # Continue with default fonts
-            
-            # For CJK and Arabic languages, try to use the appropriate Noto font
+            # Check for language-specific font
             if language_code in language_font_map:
-                if not os.path.exists(font_files[font_key]['path']):
-                    import urllib.request
+                font_info = language_font_map[language_code]
+                font_file = os.path.join(font_path, font_info['file'])
+                if os.path.exists(font_file):
                     try:
-                        logger.info(f"Downloading {font_files[font_key]['name']} font for {language_code}")
-                        urllib.request.urlretrieve(font_files[font_key]['url'], font_files[font_key]['path'])
-                        logger.info(f"Downloaded {font_files[font_key]['name']} font successfully")
+                        pdfmetrics.registerFont(TTFont(font_info['name'], font_file))
+                        font_name = font_info['name']
+                        logger.info(f"Using {font_name} font for {language_code}")
                     except Exception as e:
-                        logger.warning(f"Could not download {font_files[font_key]['name']} font: {e}")
-                        # Fallback to DejaVu
-                        font_key = 'dejavu'
+                        logger.warning(f"Error registering {font_name} font: {e}")
             
-            # Register the appropriate font
-            if font_key in font_files and os.path.exists(font_files[font_key]['path']):
-                pdfmetrics.registerFont(TTFont(font_files[font_key]['name'], font_files[font_key]['path']))
-                font_name = font_files[font_key]['name']
-                logger.info(f"Using {font_name} font for {language_code} PDF generation")
-            elif os.path.exists(dejavu_path):
-                pdfmetrics.registerFont(TTFont('DejaVuSans', dejavu_path))
-                font_name = 'DejaVuSans'
-                logger.info(f"Using DejaVuSans font for PDF generation")
-            else:
-                # Fallback to built-in fonts
-                font_name = 'Helvetica'
-                logger.info(f"Using Helvetica font for PDF generation")
-                
+            # For all other languages, try DejaVu Sans which has good Unicode support
+            if font_name == 'Helvetica':  # If we haven't set a font yet
+                dejavu_path = os.path.join(font_path, 'DejaVuSans.ttf')
+                if os.path.exists(dejavu_path):
+                    try:
+                        pdfmetrics.registerFont(TTFont('DejaVuSans', dejavu_path))
+                        font_name = 'DejaVuSans'
+                        logger.info(f"Using DejaVu Sans font for {language_code}")
+                    except Exception as e:
+                        logger.warning(f"Error registering DejaVu Sans font: {e}")
+            
         except Exception as font_error:
-            logger.warning(f"Error registering custom font: {font_error}")
-            # Fallback to built-in font
-            font_name = 'Helvetica'
+            logger.warning(f"Error setting up fonts: {font_error}")
+            font_name = 'Helvetica'  # Fallback to built-in font
         
         # Set font size based on language
         font_size = 11
