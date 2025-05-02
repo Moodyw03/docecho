@@ -709,7 +709,7 @@
                       window.downloadedUrls = new Set();
                       
                       // Function to trigger download directly
-                      function triggerDownload(url) {
+                      function triggerDownload(url, isFirst) {
                           // Skip if this URL has already been downloaded
                           if (window.downloadedUrls.has(url)) {
                               console.log('Skipping duplicate download: ' + url);
@@ -719,16 +719,16 @@
                           // Add to downloaded URLs set
                           window.downloadedUrls.add(url);
                           
-                          // Create a temporary anchor and trigger click
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.setAttribute('download', '');
-                          link.setAttribute('target', '_blank');
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                          
-                          console.log('Downloading: ' + url);
+                          // Use different methods based on whether this is the first or second download
+                          if (isFirst) {
+                              // First download - use window.location to ensure it works
+                              console.log('Starting primary download: ' + url);
+                              window.location.href = url;
+                          } else {
+                              // Second download - open in new tab for better compatibility
+                              console.log('Starting secondary download: ' + url);
+                              window.open(url, '_blank');
+                          }
                       }
                       
                       // Only trigger downloads once
@@ -738,12 +738,12 @@
                           downloadsTriggered = true;
                           
                           // Download audio first
-                          triggerDownload('/download/' + taskId + '/audio');
+                          triggerDownload('/download/' + taskId + '/audio', true);
                           
                           // Download PDF after a short delay
                           setTimeout(function() {
-                              triggerDownload('/download/' + taskId + '/pdf');
-                          }, 1500);
+                              triggerDownload('/download/' + taskId + '/pdf', false);
+                          }, 2000);
                       }
                   } else {
                       // For single format, create one download button as before
@@ -1044,14 +1044,14 @@
                                             const pdfUrl = '/download/' + taskId + '/pdf';
                                             
                                             if (!window.downloadedUrls.has(audioUrl)) {
-                                                triggerDownload(audioUrl);
+                                                triggerDownload(audioUrl, true);
                                             }
                                             
                                             setTimeout(function() {
                                                 if (!window.downloadedUrls.has(pdfUrl)) {
-                                                    triggerDownload(pdfUrl);
+                                                    triggerDownload(pdfUrl, false);
                                                 }
-                                            }, 1500);
+                                            }, 2000);
                                         } else {
                                             console.log('Downloads already triggered in initial phase. Skipping automatic downloads.');
                                         }
