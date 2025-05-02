@@ -708,8 +708,8 @@
                       // Track downloads to prevent duplicates using a global property
                       window.downloadedUrls = new Set();
                       
-                      // Function to create and use a hidden iframe for download
-                      function downloadWithIframe(url, frameId) {
+                      // Function to trigger download directly
+                      function triggerDownload(url) {
                           // Skip if this URL has already been downloaded
                           if (window.downloadedUrls.has(url)) {
                               console.log('Skipping duplicate download: ' + url);
@@ -719,16 +719,15 @@
                           // Add to downloaded URLs set
                           window.downloadedUrls.add(url);
                           
-                          // Create or get existing iframe
-                          let iframe = document.getElementById(frameId);
-                          if (!iframe) {
-                              iframe = document.createElement('iframe');
-                              iframe.id = frameId;
-                              iframe.style.display = 'none';
-                              hiddenFramesDiv.appendChild(iframe);
-                          }
-                          // Set the source to trigger download
-                          iframe.src = url;
+                          // Create a temporary anchor and trigger click
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.setAttribute('download', '');
+                          link.setAttribute('target', '_blank');
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          
                           console.log('Downloading: ' + url);
                       }
                       
@@ -739,11 +738,11 @@
                           downloadsTriggered = true;
                           
                           // Download audio first
-                          downloadWithIframe('/download/' + taskId + '/audio', 'audioDownloadFrame');
+                          triggerDownload('/download/' + taskId + '/audio');
                           
                           // Download PDF after a short delay
                           setTimeout(function() {
-                              downloadWithIframe('/download/' + taskId + '/pdf', 'pdfDownloadFrame');
+                              triggerDownload('/download/' + taskId + '/pdf');
                           }, 1500);
                       }
                   } else {
@@ -1038,10 +1037,23 @@
                                         // Add a success message
                                         statusMessage.textContent = 'Files ready! Your downloads should have started automatically.';
                                         
-                                        // Skip automatic downloads if they were already triggered earlier
-                                        if (typeof window.downloadedUrls === 'undefined') {
+                                        // Check if downloads were already triggered, if not trigger them now
+                                        if (typeof window.downloadedUrls !== 'undefined') {
+                                            // Downloads already triggered, check if we need to trigger them again
+                                            const audioUrl = '/download/' + taskId + '/audio';
+                                            const pdfUrl = '/download/' + taskId + '/pdf';
+                                            
+                                            if (!window.downloadedUrls.has(audioUrl)) {
+                                                triggerDownload(audioUrl);
+                                            }
+                                            
+                                            setTimeout(function() {
+                                                if (!window.downloadedUrls.has(pdfUrl)) {
+                                                    triggerDownload(pdfUrl);
+                                                }
+                                            }, 1500);
+                                        } else {
                                             console.log('Downloads already triggered in initial phase. Skipping automatic downloads.');
-                                            // No need to trigger downloads again
                                         }
                                     } else {
                                         // Original single-format download handling
