@@ -493,14 +493,30 @@ def translate_with_timeout(translator, text, dest, timeout=10, src='auto'):
             # Wait if we're about to hit rate limits
             translate_rate_limiter.wait_if_needed()
             
+            # Log translation info
+            logger.debug(f"Translating: src={src}, dest={dest}, text_length={len(text)}")
+            
             # Now make the translation request with source language
-            result = translator.translate(text, src=src, dest=dest).text
+            translation = translator.translate(text, src=src, dest=dest)
+            
+            # Enhanced logging for debugging
+            if hasattr(translation, 'src'):
+                logger.debug(f"Google detected source language: {translation.src}")
+                
+            result = translation.text
+            
+            # Verify we got a valid result
+            if not result or len(result.strip()) == 0:
+                error = Exception(f"Empty translation result for src={src}, dest={dest}")
+                
         except AttributeError as e:
+            logger.error(f"AttributeError in translation: {str(e)}")
             if "'NoneType' object has no attribute 'group'" in str(e):
                 error = Exception("Translation API error: token retrieval failed. This may be due to an API rate limit or a change in the translation service. Please try again later or contact support if the issue persists.")
             else:
                 error = e
         except Exception as e:
+            logger.error(f"Translation error: {str(e)}")
             error = e
     
     thread = threading.Thread(target=translate_task)
@@ -625,8 +641,13 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                             source_language = detection.lang
                             detected = True
                             logger.info(f"Detected source language: {source_language}")
+                            
+                            # Log the first few characters of the detected text
+                            sample_text = detection_text[:100].replace('\n', ' ')
+                            logger.info(f"Sample text (detected as {source_language}): '{sample_text}...'")
                     except Exception as detect_err:
                         logger.warning(f"Language detection failed: {detect_err}")
+                        logger.warning(f"Sample of problematic text: '{detection_text[:100]}...'")
                 
                 # Determine if translation is needed
                 needs_translation = True
@@ -635,6 +656,9 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                 if language_code == 'en' and (source_language == 'en' or not detected):
                     needs_translation = False
                     logger.info("Source text appears to be in English, skipping translation to English")
+                
+                # Log the translation decision
+                logger.info(f"Translation decision: source={source_language}, target={language_code}, needs_translation={needs_translation}")
                 
                 # Only perform translation if needed
                 if needs_translation:
@@ -656,8 +680,12 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                             
                             if error:
                                 logger.warning(f"Translation error for chunk {i}: {error}. Using original text.")
+                                logger.warning(f"Failed chunk sample: '{chunk[:50]}...'")
                                 translated_chunks.append(chunk)
                             else:
+                                logger.debug(f"Successfully translated chunk {i} ({len(chunk)} chars)")
+                                if i == 0:  # Log first chunk for debugging
+                                    logger.info(f"First chunk translation: '{chunk[:50]}' -> '{chunk_translated[:50]}'")
                                 translated_chunks.append(chunk_translated)
                                 
                             # Update progress based on translation progress
@@ -729,6 +757,15 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                     retry_count = 0
                     chunk_file_path = None
                     
+                    # For direct text-to-speech (no translation), use source_language as voice param
+                    tts_language = language_code
+                    
+                    # If target is English, make sure we're using English voice for TTS
+                    # This fixes an issue where source language is used for English output
+                    if language_code == 'en':
+                        tts_language = 'en'
+                        logger.info("Using English voice for TTS output")
+                    
                     while retry_count < max_retries:
                         try:
                             # Generate temporary filename
@@ -738,7 +775,7 @@ def process_pdf(file_content, filename, voice, output_format, user_id, audio_spe
                             chunk_file_path = convert_text_to_audio(
                                 chunk, 
                                 temp_audio_file,
-                                language_code, 
+                                tts_language, 
                                 float(audio_speed),
                                 temp_dir,
                                 tld,
