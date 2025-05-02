@@ -28,6 +28,11 @@ from app.utils.redis import get_redis
 from celery import shared_task
 from app import create_app
 import textwrap
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import cidfonts
+from reportlab.lib.fonts import addMapping
+from PIL import Image, ImageDraw, ImageFont
 
 # Add logger instance
 logger = logging.getLogger(__name__)
@@ -323,84 +328,78 @@ def concatenate_audio_files(audio_files, output_path):
 def create_translated_pdf(text, output_path, language_code='en'):
     """
     Create a PDF with the translated text that properly preserves layout and handles non-Latin scripts.
+    Uses Pillow for text rendering to ensure proper font support.
     """
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter, A4
     from reportlab.lib.units import inch
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
+    from PIL import Image, ImageDraw, ImageFont
     from io import BytesIO
     import textwrap
+    import os
     
     try:
-        # Define page dimensions
-        page_width, page_height = A4
+        # Define page dimensions (in pixels for PIL, 72 dpi)
+        page_width, page_height = int(A4[0]), int(A4[1])
         
-        # Unicode font registration for better language support
-        try:
-            # Path to fonts directory
-            font_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'fonts')
-            
-            # Language-specific font mapping
-            language_font_map = {
-                'ja': {'file': 'NotoSansCJKjp-Regular.otf', 'name': 'NotoSansCJKjp'},
-                'zh-CN': {'file': 'NotoSansCJKsc-Regular.otf', 'name': 'NotoSansCJKsc'},
-                'ko': {'file': 'NotoSansCJKkr-Regular.otf', 'name': 'NotoSansCJKkr'},
-            }
-            
-            # Register and use appropriate font based on language
-            font_name = 'Helvetica'  # Default fallback
-            
-            # Check for language-specific font
-            if language_code in language_font_map:
-                font_info = language_font_map[language_code]
-                font_file = os.path.join(font_path, font_info['file'])
-                if os.path.exists(font_file):
-                    try:
-                        pdfmetrics.registerFont(TTFont(font_info['name'], font_file))
-                        font_name = font_info['name']
-                        logger.info(f"Using {font_name} font for {language_code}")
-                    except Exception as e:
-                        logger.warning(f"Error registering {font_name} font: {e}")
-            
-            # For all other languages, try DejaVu Sans which has good Unicode support
-            if font_name == 'Helvetica':  # If we haven't set a font yet
-                dejavu_path = os.path.join(font_path, 'DejaVuSans.ttf')
-                if os.path.exists(dejavu_path):
-                    try:
-                        pdfmetrics.registerFont(TTFont('DejaVuSans', dejavu_path))
-                        font_name = 'DejaVuSans'
-                        logger.info(f"Using DejaVu Sans font for {language_code}")
-                    except Exception as e:
-                        logger.warning(f"Error registering DejaVu Sans font: {e}")
-            
-        except Exception as font_error:
-            logger.warning(f"Error setting up fonts: {font_error}")
-            font_name = 'Helvetica'  # Fallback to built-in font
+        # Path to fonts directory
+        font_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'fonts')
         
-        # Set font size based on language
-        font_size = 11
-        line_height = font_size * 1.2
+        # Default to Noto Sans for most languages
+        font_file = os.path.join(font_path, 'NotoSans-Regular.ttf')
+        font_size = 16  # Larger for PIL
         
-        # Create a PDF canvas
-        c = canvas.Canvas(output_path, pagesize=A4)
-        width, height = A4
+        # Use Noto CJK for Asian languages
+        if language_code in ['ja', 'zh-CN', 'ko']:
+            # Use TTC font which has better CJK support
+            font_file = os.path.join(font_path, 'NotoSansCJK-Regular.ttc')
+        
+        # Check if font file exists
+        if not os.path.exists(font_file):
+            logger.warning(f"Font file not found: {font_file}, using system default")
+            # Use system default
+            font = ImageFont.load_default()
+        else:
+            try:
+                # Try to load the font
+                # For TTC files, we need to specify the index
+                font_index = 0
+                if language_code == 'ja':
+                    font_index = 0  # Japanese
+                elif language_code == 'zh-CN':
+                    font_index = 1  # Simplified Chinese
+                elif language_code == 'ko':
+                    font_index = 2  # Korean
+                
+                if font_file.endswith('.ttc'):
+                    font = ImageFont.truetype(font_file, size=font_size, index=font_index)
+                else:
+                    font = ImageFont.truetype(font_file, size=font_size)
+                
+                logger.info(f"Using font {font_file} for {language_code}")
+            except Exception as e:
+                logger.warning(f"Error loading font: {e}, using system default")
+                font = ImageFont.load_default()
         
         # Set margins
-        left_margin = 72  # 1 inch in points
-        right_margin = width - 72
-        top_margin = height - 72
-        bottom_margin = 72
+        left_margin = 72  # 1 inch in pixels
+        right_margin = page_width - 72
+        top_margin = 72
+        bottom_margin = page_height - 72
         text_width = right_margin - left_margin
-        
-        # Set font
-        c.setFont(font_name, font_size)
         
         # Split text into paragraphs
         paragraphs = text.split('\n\n')
         
+        # Create list to store page images
+        pages = []
+        
         # Current position on page
         y_position = top_margin
+        
+        # Create a new page image
+        current_page = Image.new('RGB', (page_width, page_height), color='white')
+        draw = ImageDraw.Draw(current_page)
         
         for paragraph in paragraphs:
             # Skip empty paragraphs
@@ -409,38 +408,53 @@ def create_translated_pdf(text, output_path, language_code='en'):
                 
             # Wrap text to fit within margins
             paragraph = paragraph.replace('\n', ' ').strip()
-            wrapped_lines = textwrap.wrap(paragraph, width=int(text_width/6))  # Approximate character count
+            wrapped_lines = textwrap.wrap(paragraph, width=int(text_width/10))  # Approximate character count
             
             # Check if we need a new page
-            if y_position - (len(wrapped_lines) * line_height) < bottom_margin:
-                c.showPage()
-                c.setFont(font_name, font_size)
+            if y_position + (len(wrapped_lines) * (font_size + 4)) > bottom_margin:
+                # Save current page
+                pages.append(current_page)
+                # Create new page
+                current_page = Image.new('RGB', (page_width, page_height), color='white')
+                draw = ImageDraw.Draw(current_page)
                 y_position = top_margin
             
             # Add each line of the wrapped paragraph
             for line in wrapped_lines:
-                if y_position < bottom_margin:
-                    c.showPage()
-                    c.setFont(font_name, font_size)
+                if y_position + font_size > bottom_margin:
+                    # Save current page
+                    pages.append(current_page)
+                    # Create new page
+                    current_page = Image.new('RGB', (page_width, page_height), color='white')
+                    draw = ImageDraw.Draw(current_page)
                     y_position = top_margin
                 
-                # Draw text with UTF-8 encoding to handle special characters
-                c.drawString(left_margin, y_position, line)
-                y_position -= line_height
+                # Draw text
+                draw.text((left_margin, y_position), line, font=font, fill='black')
+                y_position += font_size + 4  # Add line spacing
             
             # Add some space between paragraphs
-            y_position -= line_height * 0.5
-            
-            # Check if we need a new page after paragraph
-            if y_position < bottom_margin:
-                c.showPage()
-                c.setFont(font_name, font_size)
-                y_position = top_margin
+            y_position += (font_size + 4) // 2
         
-        # Save the PDF
-        c.save()
-        logger.info(f"Created translated PDF at {output_path}")
-        return output_path
+        # Add the last page
+        if current_page:
+            pages.append(current_page)
+        
+        # Create PDF from images
+        if pages:
+            # Save the first page as PDF
+            pages[0].save(
+                output_path, 
+                save_all=True, 
+                append_images=pages[1:] if len(pages) > 1 else [],
+                resolution=72.0,
+                quality=95,
+                format='PDF'
+            )
+            logger.info(f"Created translated PDF at {output_path}")
+            return output_path
+        else:
+            raise Exception("No pages were created")
         
     except Exception as e:
         logger.error(f"Error creating PDF: {str(e)}")

@@ -1,8 +1,32 @@
 # Use an official Python image as a base
 FROM python:3.9-slim
 
-# Install system dependencies - add curl for health checks and ca-certificates for SSL
-RUN apt-get update && apt-get install -y ffmpeg curl ca-certificates && apt-get clean
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    gnupg \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libtesseract-dev \
+    python3-dev \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    # Pillow dependencies
+    libjpeg-dev \
+    zlib1g-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libopenjp2-7-dev \
+    libtiff5-dev \
+    tk-dev \
+    tcl-dev \
+    && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user to run the application
 RUN groupadd -r appuser && useradd -r -g appuser appuser
@@ -24,10 +48,10 @@ RUN mkdir -p /app/app/static/uploads /app/app/static/output /app/app/static/prog
     && chown -R appuser:appuser /app
 
 # Copy font files to the container
-COPY app/static/fonts/NotoSansCJKjp-Regular.otf /app/app/static/fonts/
-COPY app/static/fonts/NotoSansCJKsc-Regular.otf /app/app/static/fonts/
-COPY app/static/fonts/NotoSansCJKkr-Regular.otf /app/app/static/fonts/
-COPY app/static/fonts/DejaVuSans.ttf /app/app/static/fonts/
+COPY app/static/fonts/NotoSansJP-Regular.ttf /app/app/static/fonts/
+COPY app/static/fonts/NotoSansSC-Regular.ttf /app/app/static/fonts/
+COPY app/static/fonts/NotoSansKR-Regular.ttf /app/app/static/fonts/
+COPY app/static/fonts/NotoSans-Regular.ttf /app/app/static/fonts/
 
 # Ensure font files are readable
 RUN chmod 644 /app/app/static/fonts/*
